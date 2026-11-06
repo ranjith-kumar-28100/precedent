@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: 246 247 249; --panel: 255 255 255; --subtle: 241 243 246; --line: 228 231 236; --line2: 210 215 223;
+  --fg: 14 20 32; --muted: 87 96 112; --faint: 132 141 157;
+  --accent: 46 84 224; --accent-fg: 255 255 255; --accent-soft: 235 240 255;
+  --ok: 22 135 84; --warn: 176 112 10; --bad: 200 52 52;
+  color-scheme: light;
+}
+.dark {
+  --bg: 10 12 16; --panel: 17 19 25; --subtle: 23 26 33; --line: 35 39 49; --line2: 50 56 69;
+  --fg: 232 235 240; --muted: 156 164 178; --faint: 110 118 133;
+  --accent: 122 146 255; --accent-fg: 10 12 16; --accent-soft: 26 32 58;
+  --ok: 74 200 140; --warn: 235 175 70; --bad: 245 110 110;
+  color-scheme: dark;
+}
+html, body, #root { height: 100%; }
+body { @apply bg-bg text-fg font-sans antialiased; font-feature-settings: 'cv11', 'ss01'; }
+.num { font-variant-numeric: tabular-nums; }
+h1, h2, h3 { text-wrap: balance; }
+:focus-visible { outline: 2px solid rgb(var(--accent)); outline-offset: 2px; border-radius: 6px; }
+::selection { background: rgb(var(--accent) / 0.2); }
+.scroll-thin { scrollbar-width: thin; scrollbar-color: rgb(var(--line2)) transparent; }
+
+/* Markdown */
+.md { @apply text-[13.5px] leading-6 text-fg; }
+.md > * + * { margin-top: .6em; }
+.md h1, .md h2 { @apply text-[15px] font-semibold mt-4; }
+.md h3, .md h4 { @apply text-[13.5px] font-semibold mt-3; }
+.md ul { @apply list-disc pl-5 space-y-1; }
+.md ol { @apply list-decimal pl-5 space-y-1; }
+.md strong { @apply font-semibold; }
+.md code { @apply font-mono text-[12px] bg-subtle px-1 py-0.5 rounded; }
+.md a { @apply text-accent underline underline-offset-2; }
+.md table { @apply text-[12.5px] w-full; }
+.md th, .md td { @apply border border-line px-2 py-1 text-left; }
