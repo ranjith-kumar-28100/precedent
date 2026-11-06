@@ -7,6 +7,7 @@ import uuid
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import agent, chat as chat_mod, config, llm, memory, sim
@@ -43,7 +44,9 @@ def health():
         ok = True
     except Exception:
         ok = False
-    return {"hindsight": ok, "llm": config.LLM_MODEL, "llm_calls": llm.CALLS["agent"], "agent_spend_usd": round(llm.SPEND["usd"], 3), "agent_budget_usd": llm.BUDGET_USD}
+    return {"hindsight": ok, "bank_id": config.BANK_ID, "llm": config.LLM_MODEL, "llm_calls": llm.CALLS["agent"],
+            "agent_spend_usd": round(llm.SPEND["usd"], 3), "agent_budget_usd": llm.BUDGET_USD,
+            "ledger_counts": memory.ledger_counts()}
 
 
 @app.get("/api/vendors")
@@ -221,6 +224,54 @@ def eval_status(job_id: str):
     return JOBS[job_id]
 
 
-@app.get("/")
-def index():
+@app.get("/api/directives")
+def get_directives():
+    return memory.directives(config.BANK_ID)
+
+
+@app.get("/api/ledger")
+def ledger(limit: int = 100):
+    return {"counts": memory.ledger_counts(), "ops": memory.ledger(limit)}
+
+
+@app.get("/api/memory/{vendor_id}/playbook/history")
+def playbook_history(vendor_id: str):
+    vendor_or_404(vendor_id)
+    return memory.playbook_history(config.BANK_ID, vendor_id)
+
+
+class RecallReq(BaseModel):
+    query: str
+    vendor_id: str | None = None
+    as_of: str | None = None
+    limit: int = 15
+
+
+@app.post("/api/memory/recall")
+def memory_recall(req: RecallReq):
+    if req.vendor_id:
+        vendor_or_404(req.vendor_id)
+    return memory.explore_recall(config.BANK_ID, req.query, req.vendor_id, req.as_of, req.limit)
+
+
+DIST = config.WEB_DIR / "dist"
+if (DIST / "assets").is_dir():
+    app.mount("/assets", StaticFiles(directory=DIST / "assets"), name="assets")
+
+
+@app.get("/legacy")
+def legacy():
+    return FileResponse(config.WEB_DIR / "index.html")
+
+
+@app.get("/{path:path}")
+def index(path: str = ""):
+    """The React build when present (any non-API path falls through to it for client-side routing),
+    otherwise the original single-file dashboard."""
+    if path.startswith("api/"):
+        raise HTTPException(404)
+    if (DIST / "index.html").exists():
+        f = (DIST / path).resolve()
+        inside = f.is_relative_to(DIST.resolve())
+        return FileResponse(f if path and inside and f.is_file() else DIST / "index.html")
     return FileResponse(config.WEB_DIR / "index.html")
