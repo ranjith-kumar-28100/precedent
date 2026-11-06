@@ -319,4 +319,5 @@ def explore_recall(bank_id: str, query: str, vendor_id: str | None = None, as_of
     return {"results": out,
             "entities": sorted(({"name": k, "count": v} for k, v in ent_count.items()), key=lambda e: -e["count"]),
             "summary": {"visited": summ.get("total_nodes_visited"), "entry_points": summ.get("entry_points_found"),
-                        "ms": ms, "returned": len(out), "temporal_constraint": str(tc) if tc else None}}
+                        "ms": ms, "returned": len(out),
+                        "temporal_constraint": f"as of {as_of}" if as_of else (str(tc) if tc else None)}}
