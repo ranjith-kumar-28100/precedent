@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Crect width='8' height='8' rx='2' fill='%232b5fd9'/%3E%3C/svg%3E">
+<title>Precedent - negotiation copilot</title>
+<style>
+:root{
+  --bg:#f6f5f2;--surface:#fff;--surface2:#faf9f7;--ink:#1c1b19;--muted:#6b675f;--line:#e4e1da;
+  --accent:#2b5fd9;--accent-ink:#fff;--accent-soft:#e8eefc;--mem:#0f8a6a;--mem-soft:#dff3ec;
+  --base:#8a867d;--warn:#b4531a;--warn-soft:#fbeadd;--bad:#b3261e;--hl:#fff1b8;--hl-line:#e0b400;
+  --shadow:0 1px 2px rgba(20,18,10,.06),0 4px 16px rgba(20,18,10,.04);
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#12130f;--surface:#1b1c18;--surface2:#21221d;--ink:#ecebe6;--muted:#9c9a90;--line:#2f302a;
+  --accent:#6f95f2;--accent-ink:#0b1020;--accent-soft:#1e2740;--mem:#3fcfa4;--mem-soft:#14332a;
+  --base:#8d8a80;--warn:#f0a066;--warn-soft:#38271a;--bad:#f2766e;--hl:#4a3f0f;--hl-line:#d9b72b;
+  --shadow:none;}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh}
+h1,h2,h3,h4{margin:0;line-height:1.25}
+button,select,input,textarea{font:inherit;color:inherit}
+.wrap{max-width:1180px;margin:0 auto;padding:0 16px 48px}
+header{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:20px 0 12px}
+.brand{font-weight:700;font-size:20px;letter-spacing:-.02em;display:flex;align-items:center;gap:10px}
+.logo{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--mem))}
+.brand small{font-weight:400;color:var(--muted);font-size:13px;letter-spacing:0}
+.spacer{flex:1}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:3px 10px;border-radius:99px;border:1px solid var(--line);background:var(--surface);color:var(--muted)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--base)}
+.dot.ok{background:var(--mem)}.dot.bad{background:var(--bad)}
+nav{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:20px;overflow-x:auto}
+nav{scrollbar-width:none}nav::-webkit-scrollbar{display:none}
+nav button{background:none;border:0;border-bottom:2px solid transparent;padding:10px 14px;cursor:pointer;color:var(--muted);font-weight:500;white-space:nowrap}
+nav button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--accent)}
+nav button:hover{color:var(--ink)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:var(--shadow)}
+.card+.card{margin-top:16px}
+.label{font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600;margin-bottom:6px}
+.muted{color:var(--muted)}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;align-items:start}
+.controls{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:end}
+select,input,textarea{width:100%;background:var(--surface2);border:1px solid var(--line);border-radius:9px;padding:9px 11px}
+select:focus,input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+textarea{resize:vertical;min-height:70px}
+.btn{background:var(--accent);color:var(--accent-ink);border:0;border-radius:9px;padding:9px 16px;font-weight:600;cursor:pointer}
+.btn.ghost{background:var(--surface2);color:var(--ink);border:1px solid var(--line)}
+.btn:disabled{opacity:.55;cursor:default}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.toggle{display:inline-flex;align-items:center;gap:10px;cursor:pointer;user-select:none;padding:6px 12px 6px 6px;border-radius:99px;border:1px solid var(--line);background:var(--surface2);font-weight:600;font-size:13px}
+.toggle input{position:absolute;opacity:0;width:0;height:0}
+.track{width:38px;height:22px;border-radius:99px;background:var(--base);position:relative;transition:.2s}
+.track::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.2s}
+.toggle input:checked+.track{background:var(--mem)}
+.toggle input:checked+.track::after{left:19px}
+.toggle input:focus-visible+.track{outline:2px solid var(--accent);outline-offset:2px}
+.toggle.on{color:var(--mem);border-color:var(--mem);background:var(--mem-soft)}
+.mode{font-size:11.5px;font-weight:700;letter-spacing:.06em;padding:3px 9px;border-radius:6px}
+.mode.on{background:var(--mem-soft);color:var(--mem)}
+.mode.off{background:var(--surface2);color:var(--muted);border:1px solid var(--line)}
+.brief{margin-top:16px;border-top:4px solid var(--base)}
+.brief.on{border-top-color:var(--mem)}
+.brief-head{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap}
+.ask{display:flex;align-items:baseline;gap:8px;margin:14px 0}
+.ask b{font-size:36px;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.tactic{border:1px solid var(--line);border-radius:11px;padding:12px 14px;margin-top:10px;cursor:pointer;background:var(--surface2);transition:.15s}
+.tactic:hover,.tactic.active{border-color:var(--hl-line);background:var(--surface)}
+.tactic.active{box-shadow:0 0 0 3px var(--hl)}
+.tactic h4{display:flex;justify-content:space-between;gap:8px;font-size:14.5px;text-transform:capitalize}
+.conf{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;font-weight:500;text-transform:none}
+.bar{height:4px;background:var(--line);border-radius:4px;margin:8px 0;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent)}
+.tactic p{margin:0;font-size:13.5px;color:var(--muted)}
+.refs{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-size:11.5px;padding:1px 8px;border-radius:99px;background:var(--accent-soft);color:var(--accent);border:0;cursor:pointer}
+ul.watch{padding-left:18px;margin:6px 0 0}ul.watch li{margin:4px 0}
+.side{position:sticky;top:12px;max-height:calc(100vh - 24px);overflow-y:auto}
+.trace{margin-top:16px;border-top:1px solid var(--line);padding-top:12px;font-size:13px}
+.trace summary{cursor:pointer;font-weight:600;color:var(--muted)}
+.trace ol{margin:10px 0 0;padding-left:20px}.trace li{margin-bottom:8px}.tr-res{font-size:12px;margin-top:2px;word-break:break-word}
+.cite{border:1px solid var(--line);border-left:3px solid var(--line);border-radius:9px;padding:9px 11px;margin-top:8px;font-size:13px;background:var(--surface2);transition:.15s;cursor:pointer}
+.cite.hl{background:var(--hl);border-left-color:var(--hl-line)}
+.cite.dim{opacity:.5}
+.cite .meta{display:flex;gap:8px;font-size:11px;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:.05em}
+.cite .meta b{color:var(--ink)}
+.empty{color:var(--muted);text-align:center;padding:28px 10px;font-size:14px}
+.err{background:var(--warn-soft);color:var(--warn);border-radius:9px;padding:10px 12px;margin-top:12px;font-size:13.5px}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:s .8s linear infinite;vertical-align:-2px;margin-right:6px}
+@keyframes s{to{transform:rotate(360deg)}}
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+.cmp .brief{margin-top:0}
+.cmp .ask b{font-size:30px}
+.chartbox{position:relative;height:340px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px}
+.stat{background:var(--surface2);border-radius:10px;padding:10px 12px;border:1px solid var(--line)}
+.stat b{font-size:24px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.progress{height:6px;background:var(--line);border-radius:6px;overflow:hidden;flex:1;min-width:120px}
+.progress i{display:block;height:100%;width:0;background:var(--accent);transition:width .4s}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px}
+.obs{padding:9px 0;border-bottom:1px solid var(--line);font-size:14px}
+.obs:last-child{border:0}
+.proof{font-size:11.5px;color:var(--mem);background:var(--mem-soft);padding:1px 8px;border-radius:99px;margin-left:6px;white-space:nowrap}
+.model{background:var(--mem-soft);border-radius:10px;padding:12px 14px;font-size:14px;max-height:520px;overflow:auto;overflow-wrap:anywhere}
+.model h5{margin:12px 0 4px;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--mem)}.model h5:first-child{margin-top:0}
+.model p{margin:4px 0}.model ul{margin:4px 0;padding-left:18px}.model li{margin:3px 0}
+.tl li div,.obs,.cite,.tactic p,.brief p,.watch li{overflow-wrap:anywhere}
+.tr-res{white-space:pre-wrap;max-height:140px;overflow:auto;background:var(--surface2);border-radius:6px;padding:4px 8px}
+.progmsg{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13.5px;color:var(--muted)}
+.cmp>div{min-width:0}
+.tl{list-style:none;padding:0;margin:8px 0 0;border-left:2px solid var(--line)}
+.tl li{position:relative;padding:0 0 14px 16px;font-size:13.5px}
+.tl li::before{content:"";position:absolute;left:-6px;top:5px;width:10px;height:10px;border-radius:50%;background:var(--base);border:2px solid var(--surface)}
+.tl li.won::before{background:var(--mem)}.tl li.lost::before{background:var(--bad)}.tl li.partial::before{background:var(--warn)}
+.form{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}
+.form .full{grid-column:1/-1}
+label.f{font-size:12.5px;color:var(--muted);display:block;margin-bottom:4px}
+.okmsg{background:var(--mem-soft);color:var(--mem);border-radius:9px;padding:10px 12px;margin-top:12px;font-size:13.5px}
+@media (max-width:900px){.grid{grid-template-columns:1fr}.side{position:static;max-height:420px}.two{grid-template-columns:1fr}}
+@media (max-width:640px){
+  .controls,.cmp,.form{grid-template-columns:1fr}
+  .stats{grid-template-columns:1fr 1fr 1fr;gap:8px}.stat b{font-size:19px}.stat .label{font-size:10px;letter-spacing:.03em}.row .btn{flex:1 1 100%}header{padding-top:14px}
+  .card{padding:14px}.ask b{font-size:30px}.chartbox{height:280px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand"><span class="logo"></span><span>Precedent <small>negotiation copilot</small></span></div>
+    <div class="spacer"></div>
+    <span class="pill" id="mockPill" hidden>mock data</span>
+    <span class="pill" title="Total LLM calls made by the backend"><span id="hCalls">LLM calls: -</span></span>
+    <span class="pill"><span class="dot" id="hDot"></span><span id="hTxt">checking...</span></span>
+  </header>
+  <nav role="tablist">
+    <button role="tab" data-tab="brief" aria-selected="true">Brief</button>
+    <button role="tab" data-tab="curve" aria-selected="false">Learning curve</button>
+    <button role="tab" data-tab="memory" aria-selected="false">Vendor memory</button>
+  </nav>
+
+  <!-- BRIEF -->
+  <section id="tab-brief">
+    <div class="card">
+      <div class="controls">
+        <div><div class="label">Upcoming negotiation</div><select id="upSel" aria-label="Upcoming negotiation"></select></div>
+        <label class="toggle on" id="memToggle"><input type="checkbox" id="memChk" checked><span class="track"></span><span id="memTxt">Memory ON</span></label>
+      </div>
+      <div id="upInfo" class="muted" style="margin-top:12px;font-size:13.5px"></div>
+      <div class="row" style="margin-top:14px">
+        <button class="btn" id="runBtn">Generate brief</button>
+        <button class="btn ghost" id="cmpBtn">Compare memory ON vs OFF</button>
+      </div>
+      <div id="briefErr"></div>
+    </div>
+    <div class="grid" style="margin-top:16px">
+      <div id="briefOut"><div class="card empty">Pick a negotiation and generate a brief.</div></div>
+      <aside class="side card" id="citePanel">
+        <h3 style="font-size:15px">Memories recalled</h3>
+        <div class="muted" style="font-size:12.5px">Click a tactic to highlight the memories behind it.</div>
+        <div id="cites"><div class="empty">No brief yet.</div></div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- CURVE -->
+  <section id="tab-curve" hidden>
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <div><h3>Does memory make the agent better?</h3>
+          <div class="muted" style="font-size:13.5px;margin-top:4px">Savings captured as % of each vendor's maximum possible discount, averaged per episode.</div></div>
+        <div class="row">
+          <label class="f" style="margin:0">Episodes</label><input id="evEp" type="number" min="3" max="30" value="10" style="width:70px">
+          <label class="f" style="margin:0">Vendors</label><input id="evVen" type="number" min="1" max="12" value="3" style="width:70px">
+          <button class="btn ghost" id="evLoad">Load last result</button>
+          <button class="btn" id="evBtn" title="Runs a fresh evaluation with real model calls (about $1). The server may refuse unless enabled.">Run fresh evaluation (uses LLM budget)</button>
+        </div>
+      </div>
+      <div class="row" style="margin:14px 0 6px"><div class="progress"><i id="evBar"></i></div><span class="muted" id="evStat" style="font-size:13px">idle</span></div>
+      <div class="chartbox"><canvas id="chart" role="img" aria-label="Savings percent by episode, memory versus baseline"></canvas></div>
+      <div id="chartFallback" class="err" hidden>Chart.js could not be loaded (offline?). Showing numbers only.</div>
+      <div class="stats">
+        <div class="stat"><div class="label">With memory (last)</div><b id="stM" style="color:var(--mem)">-</b></div>
+        <div class="stat"><div class="label">Baseline (last)</div><b id="stB">-</b></div>
+        <div class="stat"><div class="label">Lift</div><b id="stL">-</b></div>
+      </div>
+      <div id="evEmpty" class="muted" style="font-size:13px;margin-top:10px" hidden></div>
+      <div id="evErr"></div>
+    </div>
+  </section>
+
+  <!-- MEMORY -->
+  <section id="tab-memory" hidden>
+    <div class="card">
+      <div class="label">Vendor</div>
+      <select id="venSel" aria-label="Vendor"></select>
+      <div id="memErr"></div>
+    </div>
+    <div class="two" style="margin-top:16px">
+      <div>
+        <div class="card"><h3 style="font-size:15px">Mental model</h3><div id="mModel" style="margin-top:10px"></div></div>
+        <div class="card"><h3 style="font-size:15px">Observations <span class="muted" id="factN" style="font-weight:400;font-size:12.5px"></span></h3><div id="mObs" style="margin-top:6px"></div></div>
+      </div>
+      <div>
+        <div class="card"><h3 style="font-size:15px">Episode timeline</h3><ul class="tl" id="tl"></ul>
+          <div class="muted" id="tlNote" style="font-size:12.5px"></div></div>
+        <div class="card">
+          <h3 style="font-size:15px">Log outcome</h3>
+          <form id="outForm" class="form">
+            <div><label class="f" for="oT">Tactic used</label><select id="oT"></select></div>
+            <div><label class="f" for="oO">Outcome</label><select id="oO"><option>won</option><option>partial</option><option>lost</option></select></div>
+            <div><label class="f" for="oA">Ask discount (%)</label><input id="oA" type="number" step="0.1" min="0" max="100" value="15" required></div>
+            <div><label class="f" for="oF">Final discount (%)</label><input id="oF" type="number" step="0.1" min="0" max="100" value="9" required></div>
+            <div class="full"><label class="f" for="oN">Notes</label><textarea id="oN" placeholder="Who was on the call, what moved them..."></textarea></div>
+            <div class="full"><button class="btn" type="submit" id="oBtn">Retain into memory</button></div>
+          </form>
+          <div id="outMsg"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+"use strict";
+const qs = new URLSearchParams(location.search);
+const MOCK = qs.get('mock') === '1';
+const API = (qs.get('api') || window.PRECEDENT_API || '/api').replace(/\/$/, '');
+const TACTICS = ['competing_quote','volume_commit','multi_year','quarter_end_timing','bundle','escalate_to_exec','payment_terms'];
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pc = v => { v = +v; return (v <= 1 ? Math.round(v * 1000) / 10 : v) + '%'; };
+const nice = t => String(t).replace(/_/g, ' ');
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+/* ---------------- API layer ---------------- */
+async function api(path, opts) {
+  if (MOCK) return mockApi(path, opts);
+  let r;
+  try {
+    r = await fetch(API + path, opts && opts.body ? {method: opts.method || 'POST', headers: {'Content-Type': 'application/json'}, body: opts.body} : undefined);
+  } catch (e) { throw new Error('Cannot reach the API at ' + API + ' (' + e.message + ')'); }
+  if (!r.ok) {
+    let d = ''; try { d = (await r.json()).detail || ''; } catch (_) {}
+    throw new Error('API ' + r.status + ' on ' + path + (d ? ': ' + (typeof d === 'string' ? d : JSON.stringify(d)) : ''));
+  }
+  return r.json();
+}
+const post = (p, body) => api(p, {method: 'POST', body: JSON.stringify(body)});
+const showErr = (el, e) => { el.innerHTML = '<div class="err">' + esc(e.message || e) + '</div>'; };
+
+/* ---------------- state ---------------- */
+let vendors = [], upcoming = [];
+const vName = id => (vendors.find(v => v.id === id) || {}).name || id;
+
+/* ---------------- tabs ---------------- */
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.setAttribute('aria-selected', x === b));
+  ['brief','curve','memory'].forEach(t => $('#tab-' + t).hidden = t !== b.dataset.tab);
+  if (b.dataset.tab === 'memory') loadMemory();
+  if (b.dataset.tab === 'curve') { if (chart) chart.resize(); if (!window._curveAuto) { window._curveAuto = true; $('#evLoad').click(); } }
+});
+
+/* ---------------- init ---------------- */
+function refreshHealth() {
+  return api('/health').then(h => {
+    $('#hDot').className = 'dot ' + (h.hindsight ? 'ok' : 'bad');
+    $('#hTxt').textContent = 'Hindsight ' + (h.hindsight ? 'up' : 'down') + ' / ' + (h.llm || 'llm');
+    $('#hCalls').textContent = 'LLM calls: ' + (h.llm_calls != null ? h.llm_calls : '-');
+  }).catch(() => { $('#hDot').className = 'dot bad'; $('#hTxt').textContent = 'API offline'; });
+}
+/* tiny markdown renderer (headings, bullets with nesting, **bold**) for the mental model */
+function md(src) {
+  const inl = t => esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  let out = '', depth = -1;
+  const close = d => { while (depth > d) { out += '</ul>'; depth--; } };
+  String(src).split('\n').forEach(line => {
+    const h = line.match(/^#{1,6}\s+(.*)/), b = line.match(/^(\s*)[-*]\s+(.*)/);
+    if (h) { close(-1); out += '<h5>' + inl(h[1]) + '</h5>'; }
+    else if (b) { const d = Math.min(Math.floor(b[1].length / 2), 3); close(d); while (depth < d) { out += '<ul>'; depth++; } out += '<li>' + inl(b[2]) + '</li>'; }
+    else if (line.trim()) { close(-1); out += '<p>' + inl(line.trim()) + '</p>'; }
+  });
+  close(-1); return out;
+}
+async function init() {
+  if (MOCK) $('#mockPill').hidden = false;
+  refreshHealth(); setInterval(refreshHealth, 20000);
+  try {
+    [vendors, upcoming] = await Promise.all([api('/vendors'), api('/upcoming')]);
+  } catch (e) { showErr($('#briefErr'), e); return; }
+  $('#upSel').innerHTML = upcoming.map((u, i) => `<option value="${i}">${esc(vName(u.vendor_id))} - ${esc(u.objective)}</option>`).join('');
+  $('#venSel').innerHTML = vendors.map(v => `<option value="${esc(v.id)}">${esc(v.name)} (${esc(v.category)})</option>`).join('');
+  $('#oT').innerHTML = TACTICS.map(t => `<option value="${t}">${nice(t)}</option>`).join('');
+  showUp();
+}
+function showUp() {
+  const u = upcoming[+$('#upSel').value]; if (!u) return;
+  $('#upInfo').innerHTML = `<div>${esc(u.context || '')}</div><div style="margin-top:4px">Deadline <b>${esc(u.deadline || 'n/a')}</b></div>`;
+}
+$('#upSel').onchange = showUp;
+$('#memChk').onchange = () => {
+  const on = $('#memChk').checked;
+  $('#memTxt').textContent = on ? 'Memory ON' : 'Memory OFF';
+  $('#memToggle').classList.toggle('on', on);
+};
+
+/* ---------------- brief ---------------- */
+function payload(useMem) {
+  const u = upcoming[+$('#upSel').value];
+  return {vendor_id: u.vendor_id, objective: u.objective, context: u.context || '', use_memory: useMem};
+}
+const STOP = new Set('the a an and of to for with in on at by is are was were it its that this they their we our from as be or not but has have had will can into than then when who which'.split(' '));
+const toks = s => (String(s).toLowerCase().match(/[a-z0-9$%]{3,}/g) || []).filter(w => !STOP.has(w));
+const SYN = {competing_quote:['competing','competitor','quote','alternative','rival'],volume_commit:['volume','commit','commitment'],multi_year:['multi','year','years','term','renewal'],quarter_end_timing:['quarter','timing','deadline','close'],bundle:['bundle','bundled','package','together'],escalate_to_exec:['escalate','exec','executive','vp','cfo','director','sign'],payment_terms:['payment','terms','net','upfront','prepay']};
+/* Map a tactic to the citations that back it: explicit id references in "why" win,
+   otherwise lexical overlap with tactic name/synonyms/why text. */
+function backing(t, cites) {
+  const why = t.why || '';
+  const explicit = cites.filter(c => new RegExp('(^|[^\\w])' + c.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^\\w]|$)').test(why)).map(c => c.id);
+  if (explicit.length) return explicit;
+  if (/\[unknown\]/i.test(why)) return []; // agent says there is no supporting memory
+  const key = new Set([...(SYN[t.tactic] || []), ...toks(nice(t.tactic))]);
+  const whyT = new Set(toks(why));
+  const scored = cites.map(c => {
+    const ct = toks(c.text); let s = 0;
+    ct.forEach(w => { if (key.has(w)) s += 2; else if (whyT.has(w)) s += 1; });
+    return {id: c.id, s: s / Math.sqrt(ct.length + 4)};
+  }).filter(x => x.s > 0.5).sort((a, b) => b.s - a.s);
+  return scored.slice(0, 3).map(x => x.id);
+}
+function renderBrief(res, idp) {
+  const b = res.brief || {}, cites = res.citations || [], on = res.use_memory;
+  const tactics = (b.tactics || []).map((t, i) => ({...t, refs: backing(t, cites), i}));
+  const tHtml = tactics.map(t => `
+    <div class="tactic" tabindex="0" role="button" data-p="${idp}" data-refs="${esc(t.refs.join('|'))}">
+      <h4><span>${esc(nice(t.tactic))}</span><span class="conf">${Math.round((t.confidence || 0) * 100)}% confidence</span></h4>
+      <div class="bar"><i style="width:${Math.round((t.confidence || 0) * 100)}%"></i></div>
+      <p>${esc(t.why)}</p>
+      ${t.refs.length ? '<div class="refs">' + t.refs.map(r => `<span class="chip">memory ${esc(r)}</span>`).join('') + '</div>' : ''}
+    </div>`).join('') || '<div class="muted">No tactics returned.</div>';
+  return `<div class="card brief ${on ? 'on' : ''}">
+    <div class="brief-head"><h3>${esc(vName(res.vendor_id))}</h3>
+      <span><span class="mode ${on ? 'on' : 'off'}">${on ? 'MEMORY ON' : 'MEMORY OFF'}</span>
+      <span class="muted" style="font-size:12px;margin-left:8px">${res.latency_ms != null ? (res.latency_ms / 1000).toFixed(1) + 's' : ''}</span></span></div>
+    <p style="margin:0">${esc(b.summary)}</p>
+    <div class="ask"><b>${b.recommended_opening_ask_pct != null ? esc(b.recommended_opening_ask_pct) + '%' : '-'}</b><span class="muted">recommended opening ask</span></div>
+    <div class="label">Vendor profile</div><p style="margin:0 0 12px">${esc(b.vendor_profile)}</p>
+    <div class="label">Real decision maker</div><p style="margin:0 0 12px"><b>${esc(b.decision_maker || 'unknown')}</b></p>
+    <div class="label">Recommended tactics</div>${tHtml}
+    <div class="label" style="margin-top:16px">Watch-outs</div>
+    <ul class="watch">${(b.watch_outs || []).map(w => `<li>${esc(w)}</li>`).join('') || '<li class="muted">None</li>'}</ul>
+    ${renderTrace(res.trace)}
+  </div>`;
+}
+function renderTrace(tr) {
+  if (!tr || !tr.length) return '';
+  const label = {recall_memory: 'Recalled memory', get_playbook: 'Read playbook', reflect_on_vendor: 'Reflected on vendor',
+    market_benchmarks: 'Checked market data', submit_brief: 'Submitted brief'};
+  const arg = a => { try { const o = JSON.parse(a || '{}'); return o.query || o.question || ''; } catch (e) { return ''; } };
+  return `<details class="trace"><summary>Agent trace · ${tr.length} tool calls</summary><ol>` + tr.map(t =>
+    `<li><b>${esc(label[t.tool] || t.tool)}</b>${arg(t.args) ? ` <span class="muted">&ldquo;${esc(arg(t.args))}&rdquo;</span>` : ''}
+     <div class="muted tr-res">${esc(String(t.result || '').length > 400 ? String(t.result).slice(0, 400) + ' ...' : String(t.result || ''))}</div></li>`).join('') + '</ol></details>';
+}
+function renderCites(res) {
+  const cs = res.citations || [];
+  $('#cites').innerHTML = cs.length ? cs.map(c => `<div class="cite" data-id="${esc(c.id)}"><div class="meta"><b>${esc(c.kind)}</b><span>${esc(c.id)}</span><span>${esc(c.date || '')}</span></div>${esc(c.text)}</div>`).join('')
+    : `<div class="empty">${res.use_memory ? 'No memories recalled.' : 'Memory is OFF - the agent saw no past interactions.'}</div>`;
+}
+function highlight(refs) {
+  document.querySelectorAll('.cite').forEach(c => {
+    const h = refs.includes(c.dataset.id);
+    c.classList.toggle('hl', h); c.classList.toggle('dim', !h && refs.length > 0);
+    if (h) c.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  });
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest('.tactic');
+  if (t) {
+    const was = t.classList.contains('active');
+    document.querySelectorAll('.tactic').forEach(x => x.classList.remove('active'));
+    if (!was) t.classList.add('active');
+    highlight(was ? [] : t.dataset.refs.split('|').filter(Boolean));
+    return;
+  }
+  const c = e.target.closest('.cite');
+  if (c) { // reverse: show tactics citing this memory
+    document.querySelectorAll('.tactic').forEach(x => x.classList.toggle('active', x.dataset.refs.split('|').includes(c.dataset.id)));
+    highlight([c.dataset.id]);
+  }
+});
+document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('tactic')) { e.preventDefault(); e.target.click(); } });
+
+const busy = (btn, on, txt) => { btn.disabled = on; if (on) { btn.dataset.t = btn.textContent; btn.innerHTML = '<span class="spin"></span>' + txt; } else btn.textContent = btn.dataset.t || btn.textContent; };
+/* shows rolling status text in the output area while a (30-60s) brief request is in flight */
+function progress(mem) {
+  const steps = mem ? ['Agent is recalling memory...', 'Reading the vendor playbook...', 'Reflecting on past negotiations...', 'Checking market benchmarks...', 'Drafting the brief...']
+                    : ['Agent is drafting the brief (no memory)...', 'Checking market benchmarks...', 'Drafting the brief...'];
+  const t0 = Date.now(); let i = 0;
+  const paint = () => { $('#briefOut').innerHTML = `<div class="card"><div class="progmsg"><span class="spin"></span><span>${steps[Math.min(i, steps.length - 1)]}</span><span style="margin-left:auto;font-variant-numeric:tabular-nums">${Math.round((Date.now() - t0) / 1000)}s</span></div><div class="muted" style="font-size:12.5px;margin-top:6px">This usually takes 30-60 seconds.</div></div>`; };
+  paint(); $('#cites').innerHTML = '<div class="empty">Waiting for the agent...</div>';
+  const id = setInterval(() => { i = Math.floor((Date.now() - t0) / 8000); paint(); }, 1000);
+  return () => clearInterval(id);
+}
+$('#runBtn').onclick = async () => {
+  if (!upcoming.length) return;
+  $('#briefErr').innerHTML = ''; busy($('#runBtn'), true, 'Thinking...'); $('#cmpBtn').disabled = true;
+  const stop = progress($('#memChk').checked);
+  try {
+    const res = await post('/brief', payload($('#memChk').checked));
+    $('#briefOut').innerHTML = renderBrief(res, 'a'); renderCites(res);
+  } catch (e) { showErr($('#briefErr'), e); $('#briefOut').innerHTML = '<div class="card empty">The brief could not be generated. Try again.</div>'; $('#cites').innerHTML = '<div class="empty">No brief yet.</div>'; }
+  stop(); busy($('#runBtn'), false); $('#cmpBtn').disabled = false; refreshHealth();
+};
+$('#cmpBtn').onclick = async () => {
+  if (!upcoming.length) return;
+  $('#briefErr').innerHTML = ''; busy($('#cmpBtn'), true, 'Running both...'); $('#runBtn').disabled = true;
+  const stop = progress(true);
+  try {
+    const [on, off] = await Promise.all([post('/brief', payload(true)), post('/brief', payload(false))]);
+    $('#briefOut').innerHTML = `<div class="cmp"><div>${renderBrief(off, 'off')}</div><div>${renderBrief(on, 'on')}</div></div>`;
+    renderCites(on);
+  } catch (e) { showErr($('#briefErr'), e); $('#briefOut').innerHTML = '<div class="card empty">The comparison failed. Try again.</div>'; $('#cites').innerHTML = '<div class="empty">No brief yet.</div>'; }
+  stop(); busy($('#cmpBtn'), false); $('#runBtn').disabled = false; refreshHealth();
+};
+
+/* ---------------- learning curve ---------------- */
+let chart = null, evTimer = null;
+function ensureChart() {
+  if (chart) return chart;
+  if (!window.Chart) { $('#chartFallback').hidden = false; return null; }
+  const css = getComputedStyle(document.documentElement);
+  const col = n => css.getPropertyValue(n).trim();
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  chart = new Chart($('#chart'), {
+    type: 'line',
+    data: {datasets: [
+      {label: 'With memory', data: [], borderColor: col('--mem'), backgroundColor: col('--mem') + '22', fill: true, tension: .3, borderWidth: 2.5, pointRadius: 3},
+      {label: 'Baseline (no memory)', data: [], borderColor: col('--base'), borderDash: [6, 4], tension: .3, borderWidth: 2, pointRadius: 2}]},
+    options: {responsive: true, maintainAspectRatio: false, animation: {duration: 350}, interaction: {mode: 'index', intersect: false},
+      scales: {x: {type: 'linear', title: {display: true, text: 'Negotiation #', color: col('--muted')}, ticks: {precision: 0, color: col('--muted')}, grid: {display: false}},
+               y: {min: 0, suggestedMax: 50, title: {display: true, text: innerWidth < 640 ? 'Savings captured (% of best possible)' : 'Savings captured (% of vendor\'s best possible)', color: col('--muted')}, ticks: {color: col('--muted'), callback: v => v + '%'}, grid: {color: col('--line')}}},
+      plugins: {legend: {labels: {color: col('--ink'), usePointStyle: true, boxWidth: 8}}, tooltip: {callbacks: {label: c => c.dataset.label + ': ' + c.parsed.y.toFixed(1) + '%'}}}}
+  });
+  return chart;
+}
+function setSeries(s) {
+  const c = ensureChart();
+  const m = (s.memory || []).map(p => ({x: p.episode, y: p.savings_pct}));
+  const b = (s.baseline || []).map(p => ({x: p.episode, y: p.savings_pct}));
+  if (c) { c.data.datasets[0].data = m; c.data.datasets[1].data = b; c.update(); }
+  const lm = m.length ? m[m.length - 1].y : null, lb = b.length ? b[b.length - 1].y : null;
+  $('#stM').textContent = lm == null ? '-' : lm.toFixed(0) + '%';
+  $('#stB').textContent = lb == null ? '-' : lb.toFixed(0) + '%';
+  $('#stL').textContent = lm == null || lb == null ? '-' : (lm - lb >= 0 ? '+' : '') + (lm - lb).toFixed(0) + ' pts';
+}
+const hasPts = s => s && ((s.memory || []).length || (s.baseline || []).length);
+$('#evLoad').onclick = async () => {
+  $('#evErr').innerHTML = ''; $('#evEmpty').hidden = true; busy($('#evLoad'), true, 'Loading...');
+  try {
+    const j = await api('/eval/cached');
+    const s = j.series || j;
+    if (hasPts(s)) {
+      setSeries(s); const n = (s.memory || []).length;
+      $('#evStat').textContent = (j.status === 'running' ? 'partial result' : 'cached result') + ' - ' + n + ' negotiation' + (n === 1 ? '' : 's');
+      $('#evBar').style.width = Math.round((j.progress != null ? j.progress : 1) * 100) + '%';
+    } else { setSeries({}); $('#evEmpty').textContent = 'The cached result is empty. Run an evaluation to generate one.'; $('#evEmpty').hidden = false; }
+  } catch (e) {
+    setSeries({});
+    $('#evEmpty').textContent = /\b404\b/.test(e.message) ? 'No saved evaluation result is available from the server yet. Run a fresh evaluation to generate one (it takes about 30 minutes and uses LLM budget).' : 'Could not load the last result: ' + e.message;
+    $('#evEmpty').hidden = false;
+  }
+  busy($('#evLoad'), false);
+};
+$('#evBtn').onclick = async () => {
+  clearTimeout(evTimer); $('#evErr').innerHTML = ''; $('#evEmpty').hidden = true; busy($('#evBtn'), true, 'Running...');
+  try {
+    const {job_id} = await post('/eval/run', {episodes: +$('#evEp').value || 12, vendors: +$('#evVen').value || 4});
+    const poll = async () => {
+      try {
+        const j = await api('/eval/' + encodeURIComponent(job_id));
+        $('#evBar').style.width = Math.round((j.progress || 0) * 100) + '%';
+        $('#evStat').textContent = j.status === 'done' ? 'done' : j.status === 'error' ? 'failed' : 'running ' + Math.round((j.progress || 0) * 100) + '%';
+        setSeries(j.series || {});
+        if (j.status === 'error') { showErr($('#evErr'), 'Evaluation failed: ' + (j.error || 'unknown error') + (hasPts(j.series) ? ' (showing partial results)' : '')); return busy($('#evBtn'), false); }
+        if (j.status === 'done') { refreshHealth(); return busy($('#evBtn'), false); }
+        evTimer = setTimeout(poll, 1500);
+      } catch (e) { showErr($('#evErr'), e); busy($('#evBtn'), false); }
+    };
+    poll();
+  } catch (e) { showErr($('#evErr'), e); busy($('#evBtn'), false); }
+};
+
+/* ---------------- vendor memory ---------------- */
+async function loadMemory() {
+  const id = $('#venSel').value; if (!id) return;
+  $('#memErr').innerHTML = '';
+  try {
+    const m = await api('/memory/' + encodeURIComponent(id));
+    $('#mModel').innerHTML = m.mental_model ? `<div class="model">${md(m.mental_model)}</div>` : '<div class="muted">No mental model consolidated yet.</div>';
+    $('#factN').textContent = (m.facts != null ? '(' + m.facts + ' facts stored)' : '');
+    $('#mObs').innerHTML = (m.observations || []).map(o => `<div class="obs">${esc(o.text)}${+o.proof_count > 0 ? `<span class="proof">${esc(o.proof_count)}x proof</span>` : ''}</div>`).join('') || '<div class="muted">No observations yet.</div>';
+    // timeline: only offered when the backend exposes episodes on /memory (optional field)
+    const eps = m.episodes || [];
+    $('#tl').innerHTML = eps.slice().sort((a, b) => String(b.date).localeCompare(String(a.date))).map(e => `<li class="${esc(e.outcome)}"><b>${esc(e.date)}</b> - ${esc(nice(e.tactic_used))}, asked ${pc(e.ask_discount)}, got ${pc(e.final_discount)} (${esc(e.outcome)})<div class="muted">${esc(e.notes || '')}</div></li>`).join('');
+    $('#tlNote').textContent = eps.length ? '' : 'No past negotiations recorded for this vendor yet.';
+    sessionLog.filter(e => e.vendor_id === id).forEach(addTl);
+  } catch (e) { showErr($('#memErr'), e); }
+}
+const sessionLog = [];
+function addTl(e) {
+  $('#tl').insertAdjacentHTML('afterbegin', `<li class="${esc(e.outcome)}"><b>just now</b> - ${esc(nice(e.tactic_used))}, asked ${pc(e.ask_discount)}, got ${pc(e.final_discount)} (${esc(e.outcome)})<div class="muted">${esc(e.notes)}</div></li>`);
+}
+$('#venSel').onchange = loadMemory;
+$('#outForm').onsubmit = async ev => {
+  ev.preventDefault(); $('#outMsg').innerHTML = ''; busy($('#oBtn'), true, 'Retaining...');
+  const body = {vendor_id: $('#venSel').value, tactic_used: $('#oT').value, ask_discount: +$('#oA').value / 100, final_discount: +$('#oF').value / 100, outcome: $('#oO').value, notes: $('#oN').value};
+  try {
+    const r = await post('/outcome', body);
+    if (r.retained) { $('#outMsg').innerHTML = '<div class="okmsg">Retained into the memory bank.</div>'; sessionLog.push(body); addTl(body); $('#oN').value = ''; }
+    else showErr($('#outMsg'), 'Backend did not confirm retention.');
+  } catch (e) { showErr($('#outMsg'), e); }
+  busy($('#oBtn'), false);
+};
+
+/* ---------------- mock backend (?mock=1) ---------------- */
+const MV = [
+  {id:'v_northwind',name:'Northwind Cloud Software',category:'SaaS licences',list_price_usd_annual:420000,episodes:6},
+  {id:'v_harbor',name:'Harborline Freight',category:'freight/logistics',list_price_usd_annual:1250000,episodes:5},
+  {id:'v_castellan',name:'Castellan Metals',category:'raw materials',list_price_usd_annual:2100000,episodes:7},
+  {id:'v_brightfab',name:'BrightFab Contract Mfg',category:'contract manufacturing',list_price_usd_annual:3400000,episodes:4}];
+const MU = [
+  {vendor_id:'v_northwind',objective:'Renew 400 seats at 20% off list',context:'Current contract expires in 6 weeks. Rival vendor Skyline has sent an informal quote.',deadline:'2026-12-15'},
+  {vendor_id:'v_harbor',objective:'Lock 2027 lane rates for APAC',context:'Fuel surcharge dispute is open. Volume up 12% YoY.',deadline:'2026-11-30'},
+  {vendor_id:'v_castellan',objective:'Cut aluminium coil price 10%',context:'Spot prices fell last month; Castellan has not passed it on.',deadline:'2026-12-05'}];
+const MCITES = [
+  {id:'m1',kind:'fact',date:'2026-03-12',text:'Northwind sent a revised quote two days before quarter end after Dana Whitfield was shown the Skyline competing quote.'},
+  {id:'m2',kind:'observation',text:'Competing quotes consistently move Northwind: 3 of 3 episodes with a competing quote ended won with 17-21% off.'},
+  {id:'m3',kind:'observation',text:'Pushing a multi-year commit early made Northwind harden; they refused to discuss discounts beyond 5% for 3 weeks.'},
+  {id:'m4',kind:'fact',date:'2025-11-02',text:'Real approver is the VP Sales (Marcus Hale), not the account exec who attends calls; AE cannot discount past 8%.'},
+  {id:'m5',kind:'mental_model',text:'Northwind opens about 18% above floor and concedes in the last week of the quarter, only with a credible alternative and exec escalation.'}];
+const MEP = ['competing_quote','quarter_end_timing','escalate_to_exec'];
+let mockJobs = {};
+async function mockApi(path, opts) {
+  await sleep(250 + Math.random() * 300);
+  const body = opts && opts.body ? JSON.parse(opts.body) : null;
+  if (path === '/health') return {hindsight: true, llm: 'mock-llm'};
+  if (path === '/vendors') return MV;
+  if (path === '/upcoming') return MU;
+  if (path === '/brief') {
+    const on = body.use_memory;
+    await sleep(on ? 900 : 500);
+    return {vendor_id: body.vendor_id, use_memory: on, latency_ms: on ? 4300 : 2100,
+      brief: on ? {
+        summary: 'Northwind opens high and concedes late. With a live Skyline quote and the VP in the room you can realistically land near 20%.',
+        vendor_profile: 'Opens ~18% above floor; sends revised quote just before quarter end; account exec has a hard 8% cap.',
+        recommended_opening_ask_pct: 24,
+        tactics: [
+          {tactic:'competing_quote',why:'Competing quotes won every time in the past (m2) and triggered the last revised offer (m1).',confidence:.88},
+          {tactic:'escalate_to_exec',why:'AE cannot discount beyond 8%; the VP Sales approves (m4).',confidence:.76},
+          {tactic:'quarter_end_timing',why:'They concede in the final week of the quarter.',confidence:.7}],
+        watch_outs: ['Do not lead with a multi-year commit - it made them harden before (m3).','Do not negotiate discount with the AE alone.'],
+        decision_maker: 'VP Sales (Marcus Hale)'
+      } : {
+        summary: 'Generic SaaS renewal brief: ask for a meaningful discount and lean on volume.',
+        vendor_profile: 'No history available for this vendor.',
+        recommended_opening_ask_pct: 10,
+        tactics: [{tactic:'multi_year',why:'Multi-year commitments typically earn discounts in SaaS renewals.',confidence:.55},
+                  {tactic:'volume_commit',why:'Larger seat counts usually unlock tiered pricing.',confidence:.5}],
+        watch_outs: ['Check auto-renewal terms.'], decision_maker: 'Account manager (assumed)'},
+      citations: on ? MCITES : []};
+  }
+  if (path === '/outcome') return {retained: true};
+  if (path.startsWith('/memory/')) return {facts: 23, mental_model: MCITES[4].text + '\nContradiction noted: after the Q2 acquisition the decision maker moved from the CFO to the VP Sales.',
+    observations: [{text:MCITES[1].text,proof_count:3},{text:MCITES[2].text,proof_count:2},{text:MCITES[3].text,proof_count:4}],
+    episodes: [{date:'2025-11-02',tactic_used:'multi_year',ask_discount:.2,final_discount:.04,outcome:'lost',notes:'Northwind pushed back hard; Dana said pricing is locked.'},
+               {date:'2026-03-12',tactic_used:'competing_quote',ask_discount:.2,final_discount:.18,outcome:'won',notes:'Skyline quote shown; revised quote arrived two days before quarter end.'},
+               {date:'2026-06-27',tactic_used:'escalate_to_exec',ask_discount:.22,final_discount:.15,outcome:'partial',notes:'Marcus Hale joined and approved 15%.'}]};
+  if (path === '/eval/run') { const id = 'job' + Date.now(); mockJobs[id] = {n: body.episodes, k: 0}; return {job_id: id}; }
+  if (path.startsWith('/eval/')) {
+    const j = mockJobs[decodeURIComponent(path.slice(6))]; j.k = Math.min(j.n, j.k + 1);
+    const mem = [], base = [];
+    for (let i = 1; i <= j.k; i++) {
+      const t = (i - 1) / Math.max(1, j.n - 1), w = Math.sin(i * 2.1);
+      mem.push({episode: i, savings_pct: Math.min(95, 35 + 50 * (1 - Math.pow(1 - t, 1.6)) + w * 3), won: i > 2});
+      base.push({episode: i, savings_pct: 37 + Math.sin(i * 1.7) * 4, won: i % 3 === 0});
+    }
+    return {status: j.k >= j.n ? 'done' : 'running', progress: j.k / j.n, series: {memory: mem, baseline: base}};
+  }
+  throw new Error('mock: unknown endpoint ' + path);
+}
+
+init();
+</script>
+</body>
+</html>
