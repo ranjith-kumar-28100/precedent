@@ -110,7 +110,7 @@ Logging an outcome through Ledger and then asking Negotiator for a new brief clo
 ## Architecture
 
 ```
- web/index.html (dashboard)            band_agents/ (Scout, Negotiator, Ledger)
+ frontend/ -> web/dist (React UI)      band_agents/ (Scout, Negotiator, Ledger)
           \                                   /
            +------------- HTTP ---------------+
                           |
@@ -139,7 +139,11 @@ uv run python scripts/seed.py   # creates the bank, one playbook per vendor, ret
 ./run_api.sh                # API + dashboard on :8000
 ```
 
-Then open http://localhost:8000. Seeding makes one retain call per episode and Hindsight does LLM extraction for each, so it takes a while. `run_api.sh` and `run_hindsight.sh` call binaries in `.venv/bin`, so run `uv sync` first.
+Then open http://localhost:8000. The dashboard is a React app (`frontend/`, React + Vite + TypeScript + Tailwind) whose production build is committed in `web/dist`, so Node is not needed to run it. To change the UI, run `cd frontend && npm install && npm run dev` (port 5173, proxies `/api` to :8000) and `npm run build` to refresh `web/dist`. Add `?mock=1` to the URL to explore every screen on recorded fixtures without calling the LLM. The original single-file dashboard is still served at `/legacy`.
+
+To run the offline tests (no LLM or network calls): `uv run pytest -q`.
+
+Seeding makes one retain call per episode and Hindsight does LLM extraction for each, so it takes a while. `run_api.sh` and `run_hindsight.sh` call binaries in `.venv/bin`, so run `uv sync` first.
 
 ## Configuration
 
