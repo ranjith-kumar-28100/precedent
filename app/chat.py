@@ -168,13 +168,31 @@ SYSTEM = ("You are Precedent's assistant for a procurement team. Answer question
           "it. Tactics are: " + ", ".join(TACTICS) + ". At most %d tool rounds." % (MAX_STEPS - 1))
 
 
-def chat(bank_id: str, vendors: dict[str, dict], messages: list[dict], scope: str | None = None) -> dict:
+NO_MEMORY_TOOLS = {"list_vendors", "market_benchmarks"}
+SYSTEM_NO_MEMORY = ("You are Precedent's assistant for a procurement team, running with memory switched OFF: you have NO "
+                    "record of this team's past negotiations, calls, outcomes or how its vendors behave. You can list the "
+                    "vendors and read real public-sector award benchmarks. Be as helpful as you can within that limit: "
+                    "answer from general procurement and negotiation practice, use the vendor list and benchmarks when they "
+                    "help (if the question names a vendor or a spend category, call list_vendors and/or market_benchmarks yourself instead "
+                    "of offering to), and suggest how the team could find the answer (what to check, who to ask, what to track). "
+                    "Always make clear which parts are general guidance, and say once, briefly, that you have no "
+                    "company-specific history. Never state or imply facts about a specific vendor's past behaviour, "
+                    "contacts, owners, discounts, dates or outcomes, and never invent numbers. Keep answers short. "
+                    "At most %d tool rounds." % (MAX_STEPS - 1))
+
+
+def chat(bank_id: str, vendors: dict[str, dict], messages: list[dict], scope: str | None = None,
+         use_memory: bool = True) -> dict:
     t0 = time.time()
     ctx = Ctx(bank_id=bank_id, vendors=vendors, history=messages, scope=scope if scope in vendors else None)
     convo = [{"role": "system", "content": SYSTEM + (f" Pinned vendor scope: {vendors[ctx.scope]['name']}." if ctx.scope else "")}]
     convo += [{"role": m["role"], "content": str(m["content"])[:4000]} for m in messages[-8:]
               if m.get("role") in ("user", "assistant") and m.get("content")]
-    specs = [s for s, _ in TOOLS.values()]
+    # Memory OFF removes every tool that reads Hindsight; same model, loop and step limit otherwise.
+    tools = TOOLS if use_memory else {k: v for k, v in TOOLS.items() if k in NO_MEMORY_TOOLS}
+    if not use_memory:
+        convo[0]["content"] = SYSTEM_NO_MEMORY
+    specs = [s for s, _ in tools.values()]
     answer = ""
     for step in range(MAX_STEPS):
         if step == MAX_STEPS - 1:
@@ -189,7 +207,7 @@ def chat(bank_id: str, vendors: dict[str, dict], messages: list[dict], scope: st
             name = c["function"]["name"]
             try:
                 args = json.loads(c["function"].get("arguments") or "{}")
-                result = TOOLS[name][1](ctx, **args) if name in TOOLS else f"Unknown tool {name}."
+                result = tools[name][1](ctx, **args) if name in tools else f"Unknown tool {name}."
             except Exception as e:  # tell the model, let it recover
                 result = f"Tool error: {str(e)[:200]}"
             ctx.trace.append({"step": step + 1, "tool": name, "args": c["function"].get("arguments", ""),
@@ -197,5 +215,6 @@ def chat(bank_id: str, vendors: dict[str, dict], messages: list[dict], scope: st
             convo.append({"role": "tool", "tool_call_id": c["id"], "content": result})
     used = set(re.findall(r"\[(m\d+)\]", answer))
     cites = [c for c in ctx.citations if c["id"] in used] or ctx.citations[:6]
-    return {"answer": answer or "I couldn't produce an answer.", "citations": cites, "trace": ctx.trace,
+    return {"answer": answer or "I couldn't produce an answer.", "use_memory": use_memory, "citations": cites if use_memory else [],
+            "trace": ctx.trace,
             "latency_ms": int((time.time() - t0) * 1000)}

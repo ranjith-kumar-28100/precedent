@@ -262,6 +262,7 @@ label.f{font-size:12.5px;color:var(--muted);display:block;margin-bottom:4px}
     <div class="card">
       <div class="chat-bar">
         <div class="scope"><label class="f" for="chatScope" style="margin:0 0 4px">Scope</label><select id="chatScope"><option value="">All vendors</option></select></div>
+        <label class="toggle on" id="chatMemToggle" title="Memory OFF: the assistant cannot read Hindsight, like the Brief screen's toggle"><input type="checkbox" id="chatMemChk" checked><span class="track"></span><span id="chatMemTxt">Memory ON</span></label>
         <div class="spacer"></div>
         <button class="btn ghost" id="chatClear" type="button" disabled>Clear chat</button>
       </div>
@@ -361,6 +362,11 @@ function showUp() {
   $('#upInfo').innerHTML = `<div>${esc(u.context || '')}</div><div style="margin-top:4px">Deadline <b>${esc(u.deadline || 'n/a')}</b></div>`;
 }
 $('#upSel').onchange = showUp;
+$('#chatMemChk').onchange = () => {
+  const on = $('#chatMemChk').checked;
+  $('#chatMemTxt').textContent = on ? 'Memory ON' : 'Memory OFF';
+  $('#chatMemToggle').classList.toggle('on', on);
+};
 $('#memChk').onchange = () => {
   const on = $('#memChk').checked;
   $('#memTxt').textContent = on ? 'Memory ON' : 'Memory OFF';
@@ -612,7 +618,7 @@ function chatBot(res, k) {
   const ev = cites.length ? `<details class="ev"><summary>Evidence &middot; ${cites.length} source${cites.length === 1 ? '' : 's'}</summary>` + cites.map(c => `<div class="ev-item" id="ev${k}-${esc(c.id)}" data-id="${esc(c.id)}">
       <div class="meta"><b>${esc(nice(c.kind))}</b><span>${esc(c.id)}</span>${c.vendor ? '<span>' + esc(vName(c.vendor)) + '</span>' : ''}${c.date ? '<span>' + esc(c.date) + '</span>' : ''}</div>
       ${c.kind === 'mental_model' ? '<div class="model">' + md(c.text) + '</div>' : esc(c.text)}</div>`).join('') + '</details>' : '';
-  return mk('msg bot card', `<div class="bot-head"><div class="label">Assistant</div><span class="muted" style="font-size:12px">${res.latency_ms != null ? (res.latency_ms / 1000).toFixed(1) + 's' : ''}</span></div>
+  return mk('msg bot card', `<div class="bot-head"><div class="label">Assistant <span class="mode ${res.use_memory === false ? 'off' : 'on'}" style="margin-left:6px">${res.use_memory === false ? 'MEMORY OFF' : 'MEMORY ON'}</span></div><span class="muted" style="font-size:12px">${res.latency_ms != null ? (res.latency_ms / 1000).toFixed(1) + 's' : ''}</span></div>
     <div class="answer">${chatAnswerHtml(String(res.answer || ''), cites) || '<span class="muted">(empty answer)</span>'}</div>${ev}${renderTrace(res.trace)}`);
 }
 function chatErr(e) {
@@ -633,7 +639,7 @@ function chatLoading() {
 async function chatTurn() {
   const gen = chat.gen, old = $('#chatErrEl'); if (old) old.remove();
   setBusy(true); const stop = chatLoading();
-  const body = {messages: chat.msgs.slice(-8).map(m => ({role: m.role, content: m.content})), vendor_id: $('#chatScope').value || null};
+  const body = {messages: chat.msgs.slice(-8).map(m => ({role: m.role, content: m.content})), vendor_id: $('#chatScope').value || null, use_memory: $('#chatMemChk').checked};
   try {
     const res = await post('/chat', body);
     if (gen !== chat.gen) { stop(); return; }
@@ -720,7 +726,9 @@ async function mockApi(path, opts) {
     await sleep(1500);
     if ((qs.get('mockerr') === '1' && mockChatFails++ < 1) || qs.get('mockerr') === '2') throw new Error('API 502 on /chat: upstream model timed out');
     const q = body.messages[body.messages.length - 1].content;
-    return {latency_ms: 1620,
+    if (body.use_memory === false) return {latency_ms: 900, use_memory: false, citations: [], trace: [{step:1,tool:'list_vendors',args:{},result:'4 vendors'}],
+      answer: 'Memory is off, so I have no record of past negotiations with any vendor. In general, a credible competing quote is the most common lever, but I cannot say what worked with a specific vendor.'};
+    return {latency_ms: 1620, use_memory: true,
       answer: 'Based on the recorded history, **competing quotes** are the most reliable lever [m1][m2]. Two things to keep in mind:\n- Northwind\'s real approver is the VP Sales, not the account exec [m4].\n- Pushing a multi-year commit early backfired and froze discounts for weeks [m3].\n\n### Pattern\nThe consolidated view is that they concede late in the quarter [m5]. You asked: "' + q.slice(0, 80) + '"',
       citations: [{id:'m1',kind:'fact',date:'2026-03-12',vendor:'v_northwind',text:MCITES[0].text},
         {id:'m2',kind:'observation',date:null,vendor:'v_northwind',text:MCITES[1].text},
