@@ -44,7 +44,7 @@ The **Chat** tab (`app/chat.py`, `POST /api/chat`) lets a buyer ask questions ac
 - `search_memory(query, vendor?)` searches every vendor, or one. `search_each_vendor(query)` runs the same search inside each vendor so a "which vendors..." question cannot miss one.
 - `cross_vendor_stats()` returns exact win, partial and loss counts per tactic with the vendors involved, computed from the structured metadata. Counting questions use this tool instead of an LLM's estimate.
 - `vendor_scoreboard`, `vendor_playbook`, `list_vendors` and `market_benchmarks` cover the rest.
-- Answers cite their evidence (`[m3]` chips that open the source memory) and show the tool trace. The assistant is told to say "in the memories I found" unless a sweep covered every vendor, and to say so plainly when memory has nothing. The conversation is kept client-side and the last 8 messages are sent each turn. A vendor can be pinned as the scope. The same spend guard applies.
+- Answers cite their evidence (`[m3]` chips that open the source memory) and show the tool trace. The assistant is told to say "in the memories I found" unless a sweep covered every vendor, and to say so plainly when memory has nothing. A **Memory ON/OFF toggle** (like the Brief screen) switches the chat agent between all tools and only `list_vendors` and `market_benchmarks`, with the same model, loop and step limit; with memory OFF it says plainly that it has no record of past dealings instead of guessing, and each answer is badged with the mode it ran in. The conversation is kept client-side and the last 8 messages are sent each turn. A vendor can be pinned as the scope. The same spend guard applies.
 
 ## Learning-curve evaluation
 

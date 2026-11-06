@@ -112,6 +112,7 @@ class ChatMsg(BaseModel):
 class ChatReq(BaseModel):
     messages: list[ChatMsg]
     vendor_id: str | None = None
+    use_memory: bool = True
 
 
 @app.post("/api/chat")
@@ -119,7 +120,8 @@ def chat_endpoint(req: ChatReq):
     if not req.messages or req.messages[-1].role != "user":
         raise HTTPException(400, "last message must be from the user")
     try:
-        return chat_mod.chat(config.BANK_ID, VENDORS, [m.model_dump() for m in req.messages], req.vendor_id)
+        return chat_mod.chat(config.BANK_ID, VENDORS, [m.model_dump() for m in req.messages], req.vendor_id,
+                              req.use_memory)
     except llm.BudgetExceeded as e:
         raise HTTPException(402, str(e))
     except Exception as e:
