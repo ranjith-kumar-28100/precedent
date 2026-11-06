@@ -124,6 +124,40 @@ label.f{font-size:12.5px;color:var(--muted);display:block;margin-bottom:4px}
   .stats{grid-template-columns:1fr 1fr 1fr;gap:8px}.stat b{font-size:19px}.stat .label{font-size:10px;letter-spacing:.03em}.row .btn{flex:1 1 100%}header{padding-top:14px}
   .card{padding:14px}.ask b{font-size:30px}.chartbox{height:280px}
 }
+/* chat */
+.chat-bar{display:flex;gap:10px;align-items:end;flex-wrap:wrap}
+.chat-bar .scope{flex:1 1 220px;max-width:340px}
+.chat-bar .spacer{flex:1}
+#chatList{display:flex;flex-direction:column;gap:14px;margin:16px 0 8px;min-height:120px}
+.msg{scroll-margin-bottom:130px;scroll-margin-top:12px;max-width:100%}
+.msg.user{align-self:flex-end;max-width:min(85%,640px);background:var(--accent);color:var(--accent-ink);border-radius:16px 16px 4px 16px;padding:10px 14px;white-space:pre-wrap;overflow-wrap:anywhere}
+.msg.bot{align-self:stretch;max-width:860px;border-top:3px solid var(--mem)}
+.bot .answer{font-size:14.5px;overflow-wrap:anywhere}
+.bot .answer p{margin:0 0 8px}.bot .answer p:last-child{margin-bottom:0}
+.bot .answer ul{margin:4px 0 8px;padding-left:20px}.bot .answer li{margin:3px 0}
+.bot .answer h5{margin:12px 0 4px;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--mem)}
+.cref{font:inherit;font-size:11.5px;font-weight:600;padding:0 7px;margin:0 1px;border-radius:99px;background:var(--accent-soft);color:var(--accent);border:1px solid transparent;cursor:pointer;vertical-align:1px}
+.cref:hover,.cref.on{border-color:var(--accent)}
+.bot-head{display:flex;justify-content:space-between;gap:8px;margin-bottom:8px}
+.bot-head .label{margin:0}
+.ev{margin-top:14px;border-top:1px solid var(--line);padding-top:10px;font-size:13px}
+.ev summary,.bot .trace summary{cursor:pointer;font-weight:600;color:var(--muted)}
+.bot .trace{margin-top:10px}
+.ev-item{border:1px solid var(--line);border-left:3px solid var(--line);border-radius:9px;padding:9px 11px;margin-top:8px;font-size:13px;background:var(--surface2);overflow-wrap:anywhere;transition:.15s}
+.ev-item.hl{background:var(--hl);border-left-color:var(--hl-line)}
+.ev-item .meta{display:flex;gap:8px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:.05em}
+.ev-item .meta b{color:var(--ink)}
+.chat-empty{text-align:center;padding:36px 12px 20px}
+.chat-empty h3{font-size:18px;margin-bottom:6px}
+.suggs{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:18px}
+.sugg{background:var(--surface);border:1px solid var(--line);border-radius:99px;padding:8px 14px;cursor:pointer;font-size:13.5px;text-align:left;box-shadow:var(--shadow)}
+.sugg:hover{border-color:var(--accent);color:var(--accent)}
+.composer{position:sticky;bottom:0;z-index:5;background:var(--bg);border-top:1px solid var(--line);padding:10px 0 calc(10px + env(safe-area-inset-bottom));display:flex;gap:10px;align-items:flex-end}
+.composer textarea{min-height:44px;max-height:160px;resize:none;flex:1;display:block}
+.composer .btn{height:44px}
+.msg.err-msg{align-self:stretch;max-width:860px;margin:0}
+.msg.err-msg .btn{margin-top:8px}
+@media (max-width:640px){.composer .btn{flex:0 0 auto!important;width:auto}.msg.user{max-width:92%}}
 </style>
 </head>
 <body>
@@ -139,6 +173,7 @@ label.f{font-size:12.5px;color:var(--muted);display:block;margin-bottom:4px}
     <button role="tab" data-tab="brief" aria-selected="true">Brief</button>
     <button role="tab" data-tab="curve" aria-selected="false">Learning curve</button>
     <button role="tab" data-tab="memory" aria-selected="false">Vendor memory</button>
+    <button role="tab" data-tab="chat" aria-selected="false">Chat</button>
   </nav>
 
   <!-- BRIEF -->
@@ -221,6 +256,29 @@ label.f{font-size:12.5px;color:var(--muted);display:block;margin-bottom:4px}
       </div>
     </div>
   </section>
+
+  <!-- CHAT -->
+  <section id="tab-chat" hidden>
+    <div class="card">
+      <div class="chat-bar">
+        <div class="scope"><label class="f" for="chatScope" style="margin:0 0 4px">Scope</label><select id="chatScope"><option value="">All vendors</option></select></div>
+        <div class="spacer"></div>
+        <button class="btn ghost" id="chatClear" type="button" disabled>Clear chat</button>
+      </div>
+    </div>
+    <div id="chatList" role="log" aria-live="polite" aria-relevant="additions" aria-label="Conversation">
+      <div class="chat-empty" id="chatEmpty">
+        <h3>Ask anything about your vendor memory</h3>
+        <div class="muted" style="font-size:14px">Answers are grounded in recalled memories and cite their evidence. Replies usually take 5-20 seconds.</div>
+        <div class="suggs" id="suggs"></div>
+      </div>
+    </div>
+    <form class="composer" id="chatForm">
+      <label for="chatIn" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Message</label>
+      <textarea id="chatIn" rows="1" placeholder="Ask about your vendors..." title="Enter to send, Shift+Enter for a new line"></textarea>
+      <button class="btn" id="chatSend" type="submit">Send</button>
+    </form>
+  </section>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -259,8 +317,9 @@ const vName = id => (vendors.find(v => v.id === id) || {}).name || id;
 /* ---------------- tabs ---------------- */
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.setAttribute('aria-selected', x === b));
-  ['brief','curve','memory'].forEach(t => $('#tab-' + t).hidden = t !== b.dataset.tab);
+  ['brief','curve','memory','chat'].forEach(t => $('#tab-' + t).hidden = t !== b.dataset.tab);
   if (b.dataset.tab === 'memory') loadMemory();
+  if (b.dataset.tab === 'chat') $('#chatIn').focus({preventScroll: true});
   if (b.dataset.tab === 'curve') { if (chart) chart.resize(); if (!window._curveAuto) { window._curveAuto = true; $('#evLoad').click(); } }
 });
 
@@ -293,6 +352,7 @@ async function init() {
   } catch (e) { showErr($('#briefErr'), e); return; }
   $('#upSel').innerHTML = upcoming.map((u, i) => `<option value="${i}">${esc(vName(u.vendor_id))} - ${esc(u.objective)}</option>`).join('');
   $('#venSel').innerHTML = vendors.map(v => `<option value="${esc(v.id)}">${esc(v.name)} (${esc(v.category)})</option>`).join('');
+  $('#chatScope').innerHTML = '<option value="">All vendors</option>' + vendors.map(v => `<option value="${esc(v.id)}">${esc(v.name)}</option>`).join('');
   $('#oT').innerHTML = TACTICS.map(t => `<option value="${t}">${nice(t)}</option>`).join('');
   showUp();
 }
@@ -358,15 +418,17 @@ function renderBrief(res, idp) {
 function renderTrace(tr) {
   if (!tr || !tr.length) return '';
   const label = {recall_memory: 'Recalled memory', get_playbook: 'Read playbook', reflect_on_vendor: 'Reflected on vendor',
-    market_benchmarks: 'Checked market data', submit_brief: 'Submitted brief'};
-  const arg = a => { try { const o = JSON.parse(a || '{}'); return o.query || o.question || ''; } catch (e) { return ''; } };
-  return `<details class="trace"><summary>Agent trace · ${tr.length} tool calls</summary><ol>` + tr.map(t =>
+    market_benchmarks: 'Checked market data', submit_brief: 'Submitted brief',
+    search_memory: 'Searched memory', vendor_scoreboard: 'Vendor scoreboard', vendor_playbook: 'Read vendor playbook', list_vendors: 'Listed vendors'};
+  const arg = a => { try { const o = a && typeof a === 'object' ? a : JSON.parse(a || '{}'); return o.query || o.question || o.vendor_id || o.category || ''; } catch (e) { return ''; } };
+  const rs = r => r == null ? '' : typeof r === 'object' ? JSON.stringify(r) : String(r);
+  return `<details class="trace"><summary>Agent trace · ${tr.length} tool call${tr.length === 1 ? '' : 's'}</summary><ol>` + tr.map(t =>
     `<li><b>${esc(label[t.tool] || t.tool)}</b>${arg(t.args) ? ` <span class="muted">&ldquo;${esc(arg(t.args))}&rdquo;</span>` : ''}
-     <div class="muted tr-res">${esc(String(t.result || '').length > 400 ? String(t.result).slice(0, 400) + ' ...' : String(t.result || ''))}</div></li>`).join('') + '</ol></details>';
+     <div class="muted tr-res">${esc(rs(t.result).length > 400 ? rs(t.result).slice(0, 400) + ' ...' : rs(t.result))}</div></li>`).join('') + '</ol></details>';
 }
 function renderCites(res) {
   const cs = res.citations || [];
-  $('#cites').innerHTML = cs.length ? cs.map(c => `<div class="cite" data-id="${esc(c.id)}"><div class="meta"><b>${esc(c.kind)}</b><span>${esc(c.id)}</span><span>${esc(c.date || '')}</span></div>${esc(c.text)}</div>`).join('')
+  $('#cites').innerHTML = cs.length ? cs.map(c => `<div class="cite" data-id="${esc(c.id)}"><div class="meta"><b>${esc(c.kind)}</b><span>${esc(c.id)}</span><span>${esc(c.date || '')}</span></div>${c.kind === 'mental_model' ? '<div class="model">' + md(c.text) + '</div>' : esc(c.text)}</div>`).join('')
     : `<div class="empty">${res.use_memory ? 'No memories recalled.' : 'Memory is OFF - the agent saw no past interactions.'}</div>`;
 }
 function highlight(refs) {
@@ -525,6 +587,88 @@ $('#outForm').onsubmit = async ev => {
   busy($('#oBtn'), false);
 };
 
+/* ---------------- chat ---------------- */
+const SUGGS = ['Which vendors changed owner or contact recently?', 'Which tactic has backfired most often, and with whom?', 'What works best with Kestrel Alloys?', 'Summarise every vendor where a competing quote beat 15%'];
+const chat = {msgs: [], busy: false, gen: 0, n: 0};
+$('#suggs').innerHTML = SUGGS.map(q => `<button type="button" class="sugg">${esc(q)}</button>`).join('');
+const chatList = $('#chatList'), chatIn = $('#chatIn');
+function chatAppend(el, toStart) {
+  chatList.appendChild(el);
+  $('#chatEmpty').hidden = true; $('#chatClear').disabled = false;
+  const rm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  el.scrollIntoView({block: toStart ? 'start' : 'end', behavior: rm ? 'auto' : 'smooth'});
+}
+function mk(cls, html) { const d = document.createElement('div'); d.className = cls; d.innerHTML = html; return d; }
+function chatAnswerHtml(text, cites) {
+  const ids = new Set(cites.map(c => c.id));
+  return md(text).replace(/\[(m\d+(?:\s*[,;]\s*m\d+)*)\]/g, (all, g) => {
+    const parts = g.split(/\s*[,;]\s*/);
+    if (!parts.every(p => ids.has(p))) return all;
+    return parts.map(p => `<button type="button" class="cref" data-cid="${esc(p)}" aria-label="Open evidence ${esc(p)}">${esc(p)}</button>`).join('');
+  });
+}
+function chatBot(res, k) {
+  const cites = res.citations || [];
+  const ev = cites.length ? `<details class="ev"><summary>Evidence &middot; ${cites.length} source${cites.length === 1 ? '' : 's'}</summary>` + cites.map(c => `<div class="ev-item" id="ev${k}-${esc(c.id)}" data-id="${esc(c.id)}">
+      <div class="meta"><b>${esc(nice(c.kind))}</b><span>${esc(c.id)}</span>${c.vendor ? '<span>' + esc(vName(c.vendor)) + '</span>' : ''}${c.date ? '<span>' + esc(c.date) + '</span>' : ''}</div>
+      ${c.kind === 'mental_model' ? '<div class="model">' + md(c.text) + '</div>' : esc(c.text)}</div>`).join('') + '</details>' : '';
+  return mk('msg bot card', `<div class="bot-head"><div class="label">Assistant</div><span class="muted" style="font-size:12px">${res.latency_ms != null ? (res.latency_ms / 1000).toFixed(1) + 's' : ''}</span></div>
+    <div class="answer">${chatAnswerHtml(String(res.answer || ''), cites) || '<span class="muted">(empty answer)</span>'}</div>${ev}${renderTrace(res.trace)}`);
+}
+function chatErr(e) {
+  const el = mk('msg err-msg', `<div class="err" role="alert">${esc(e.message || e)}<br><span style="font-size:12.5px">Your conversation is intact.</span><br><button type="button" class="btn ghost" data-retry>Retry</button></div>`);
+  el.id = 'chatErrEl'; return el;
+}
+function setBusy(on) {
+  chat.busy = on; chatIn.disabled = on; $('#chatSend').disabled = on;
+  document.querySelectorAll('.sugg,[data-retry]').forEach(b => b.disabled = on);
+}
+function chatLoading() {
+  const steps = ['Searching vendor memory...', 'Reading scoreboards and playbooks...', 'Cross-checking the evidence...', 'Writing the answer...'];
+  const el = mk('msg card', ''); el.id = 'chatPending'; const t0 = Date.now();
+  const paint = () => { el.innerHTML = `<div class="progmsg" style="margin:0"><span class="spin"></span><span>${steps[Math.min(steps.length - 1, Math.floor((Date.now() - t0) / 7000))]}</span><span style="margin-left:auto;font-variant-numeric:tabular-nums">${Math.round((Date.now() - t0) / 1000)}s</span></div>`; };
+  paint(); const id = setInterval(paint, 1000); chatAppend(el);
+  return () => { clearInterval(id); el.remove(); };
+}
+async function chatTurn() {
+  const gen = chat.gen, old = $('#chatErrEl'); if (old) old.remove();
+  setBusy(true); const stop = chatLoading();
+  const body = {messages: chat.msgs.slice(-8).map(m => ({role: m.role, content: m.content})), vendor_id: $('#chatScope').value || null};
+  try {
+    const res = await post('/chat', body);
+    if (gen !== chat.gen) { stop(); return; }
+    stop(); chat.msgs.push({role: 'assistant', content: String(res.answer || '')});
+    chatAppend(chatBot(res, ++chat.n), true);
+  } catch (e) { if (gen !== chat.gen) { stop(); return; } stop(); chatAppend(chatErr(e)); }
+  setBusy(false); chatIn.focus({preventScroll: true}); refreshHealth();
+}
+function chatSend(text) {
+  text = String(text || '').trim(); if (!text || chat.busy) return;
+  chat.msgs.push({role: 'user', content: text});
+  chatAppend(mk('msg user', esc(text)));
+  chatIn.value = ''; autosize(); chatTurn();
+}
+function autosize() { chatIn.style.height = 'auto'; chatIn.style.height = Math.min(chatIn.scrollHeight + 2, 160) + 'px'; }
+chatIn.addEventListener('input', autosize);
+chatIn.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); chatSend(chatIn.value); } });
+$('#chatForm').onsubmit = e => { e.preventDefault(); chatSend(chatIn.value); };
+$('#chatClear').onclick = () => {
+  chat.gen++; chat.msgs = []; chat.busy && setBusy(false);
+  chatList.querySelectorAll('.msg').forEach(m => m.remove());
+  $('#chatEmpty').hidden = false; $('#chatClear').disabled = true; chatIn.focus({preventScroll: true});
+};
+chatList.addEventListener('click', e => {
+  const s = e.target.closest('.sugg'); if (s) { chatSend(s.textContent); return; }
+  if (e.target.closest('[data-retry]')) { if (!chat.busy) chatTurn(); return; }
+  const r = e.target.closest('.cref'); if (!r) return;
+  const card = r.closest('.msg'), d = card.querySelector('details.ev'); if (!d) return;
+  d.open = true;
+  card.querySelectorAll('.ev-item').forEach(i => i.classList.toggle('hl', i.dataset.id === r.dataset.cid));
+  card.querySelectorAll('.cref').forEach(i => i.classList.toggle('on', i.dataset.cid === r.dataset.cid));
+  const t = [...card.querySelectorAll('.ev-item')].find(i => i.dataset.id === r.dataset.cid);
+  if (t) t.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+});
+
 /* ---------------- mock backend (?mock=1) ---------------- */
 const MV = [
   {id:'v_northwind',name:'Northwind Cloud Software',category:'SaaS licences',list_price_usd_annual:420000,episodes:6},
@@ -542,7 +686,7 @@ const MCITES = [
   {id:'m4',kind:'fact',date:'2025-11-02',text:'Real approver is the VP Sales (Marcus Hale), not the account exec who attends calls; AE cannot discount past 8%.'},
   {id:'m5',kind:'mental_model',text:'Northwind opens about 18% above floor and concedes in the last week of the quarter, only with a credible alternative and exec escalation.'}];
 const MEP = ['competing_quote','quarter_end_timing','escalate_to_exec'];
-let mockJobs = {};
+let mockJobs = {}, mockChatFails = 0;
 async function mockApi(path, opts) {
   await sleep(250 + Math.random() * 300);
   const body = opts && opts.body ? JSON.parse(opts.body) : null;
@@ -571,6 +715,21 @@ async function mockApi(path, opts) {
                   {tactic:'volume_commit',why:'Larger seat counts usually unlock tiered pricing.',confidence:.5}],
         watch_outs: ['Check auto-renewal terms.'], decision_maker: 'Account manager (assumed)'},
       citations: on ? MCITES : []};
+  }
+  if (path === '/chat') {
+    await sleep(1500);
+    if ((qs.get('mockerr') === '1' && mockChatFails++ < 1) || qs.get('mockerr') === '2') throw new Error('API 502 on /chat: upstream model timed out');
+    const q = body.messages[body.messages.length - 1].content;
+    return {latency_ms: 1620,
+      answer: 'Based on the recorded history, **competing quotes** are the most reliable lever [m1][m2]. Two things to keep in mind:\n- Northwind\'s real approver is the VP Sales, not the account exec [m4].\n- Pushing a multi-year commit early backfired and froze discounts for weeks [m3].\n\n### Pattern\nThe consolidated view is that they concede late in the quarter [m5]. You asked: "' + q.slice(0, 80) + '"',
+      citations: [{id:'m1',kind:'fact',date:'2026-03-12',vendor:'v_northwind',text:MCITES[0].text},
+        {id:'m2',kind:'observation',date:null,vendor:'v_northwind',text:MCITES[1].text},
+        {id:'m3',kind:'observation',vendor:'v_northwind',text:MCITES[2].text},
+        {id:'m4',kind:'fact',date:'2025-11-02',vendor:'v_northwind',text:MCITES[3].text},
+        {id:'m5',kind:'mental_model',vendor:'v_northwind',text:'### Northwind\n- Opens about 18% above floor\n- Concedes in the **last week of the quarter**, only with a credible alternative'}],
+      trace: [{step:1,tool:'list_vendors',args:{},result:'4 vendors'},
+        {step:2,tool:'search_memory',args:{query:q.slice(0, 60),vendor_id:body.vendor_id},result:'5 memories: m1..m5'},
+        {step:3,tool:'vendor_playbook',args:{vendor_id:'v_northwind'},result:{works:'competing_quote',fails:'multi_year'}}]};
   }
   if (path === '/outcome') return {retained: true};
   if (path.startsWith('/memory/')) return {facts: 23, mental_model: MCITES[4].text + '\nContradiction noted: after the Q2 acquisition the decision maker moved from the CFO to the VP Sales.',

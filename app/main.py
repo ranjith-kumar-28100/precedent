@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from . import agent, config, llm, memory, sim
+from . import agent, chat as chat_mod, config, llm, memory, sim
 
 app = FastAPI(title="Precedent")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -102,6 +102,28 @@ def memory_view(vendor_id: str):
     view = memory.vendor_memory_view(config.BANK_ID, vendor_id)
     view["episodes"] = sorted((e for e in HISTORY if e["vendor_id"] == vendor_id), key=lambda e: e["date"])
     return view
+
+
+class ChatMsg(BaseModel):
+    role: str
+    content: str
+
+
+class ChatReq(BaseModel):
+    messages: list[ChatMsg]
+    vendor_id: str | None = None
+
+
+@app.post("/api/chat")
+def chat_endpoint(req: ChatReq):
+    if not req.messages or req.messages[-1].role != "user":
+        raise HTTPException(400, "last message must be from the user")
+    try:
+        return chat_mod.chat(config.BANK_ID, VENDORS, [m.model_dump() for m in req.messages], req.vendor_id)
+    except llm.BudgetExceeded as e:
+        raise HTTPException(402, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"chat failed: {type(e).__name__}: {e}")
 
 
 # ---- learning-curve evaluation -------------------------------------------------------------

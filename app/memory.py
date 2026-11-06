@@ -140,3 +140,17 @@ def tactic_scoreboard(bank_id: str, vendor_id: str, all_tactics: list[str]) -> d
         except (KeyError, ValueError):
             pass
     return {"episodes": len(episodes), "board": board, "untried": [t for t in all_tactics if t not in board]}
+
+
+def recall_bank(bank_id: str, query: str, vendor_id: str | None = None, limit: int = 10) -> list[dict]:
+    """Search the whole bank (all vendors) or one vendor. Each hit carries its vendor id, parsed from the
+    vendor:<id> tag, so a cross-vendor answer can say which vendor a memory is about."""
+    kw = dict(tags=[vtag(vendor_id)], tags_match="any_strict") if vendor_id else {}
+    res = client().recall(bank_id=bank_id, query=query, budget="mid", max_tokens=3500,
+                          types=["observation", "world", "experience"], **kw)
+    out = []
+    for r in res.results[:limit]:
+        vid = next((t.split(":", 1)[1] for t in (r.tags or []) if t.startswith("vendor:")), None)
+        out.append({"id": r.id, "text": r.text, "kind": "observation" if r.type == "observation" else "fact",
+                    "date": (r.occurred_start or r.mentioned_at or "")[:10] or None, "vendor_id": vid})
+    return out
