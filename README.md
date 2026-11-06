@@ -23,17 +23,28 @@ Precedent uses [Hindsight](https://github.com/vectorize-io/hindsight) (open sour
 
 **Evolving beliefs.** The seeded history contains deliberate contradictions (see `data/generate.py`). For example, Northwind Cloudworks's discounts were approved by Raj Menon, the Regional Sales Director, through early 2026; a May 2026 episode records that Northwind was acquired by Stratus Group, Raj left, and a new VP Revenue Operations (Alan Pierce) now signs discounts. The observation and playbook for that vendor are meant to reflect the newer fact while keeping the earlier history, which is what `OBSERVATIONS_MISSION` asks for. Whether a given consolidation run phrases this well depends on the Hindsight model; inspect it in the Vendor memory tab.
 
+**Structured metadata.** `memory.retain_episode` also attaches `tactic`, `outcome`, `final_discount`, `ask_discount` and `date` as metadata. Hindsight returns that metadata on every recalled fact, and facts from one episode share a `document_id`, so `memory.tactic_scoreboard` can de-duplicate and count outcomes exactly instead of asking an LLM to count.
+
 **Outcomes feed back.** `POST /api/outcome` calls `memory.retain_episode`; the next brief can recall it, and consolidation then updates the observations and playbook.
 
 ## Agent design
 
 `app/agent.py`, function `make_brief`, is a tool-calling loop over an Azure OpenAI chat-completions endpoint (`app/llm.py`, `chat_message`, with retry/backoff on 429/5xx and dropped connections).
 
-- **Tools.** Memory tools: `recall_memory(query)`, `get_playbook()`, `reflect_on_vendor(question)`. Base tools: `market_benchmarks()` (real award statistics for the vendor's category) and `submit_brief(...)`, which validates that tactics come from the fixed list of seven (`competing_quote`, `volume_commit`, `multi_year`, `quarter_end_timing`, `bundle`, `escalate_to_exec`, `payment_terms`) and that the ask is numeric.
-- **Fair memory ON/OFF comparison.** Memory OFF removes only the three memory tools. Same model, system prompt, loop, step limit (7) and base tools. The user message differs by one sentence ("Memory tools are available." vs. "You have no memory of past dealings.").
+- **Tools.** Memory tools: `tactic_scoreboard()` (tries, outcomes and best discount per tactic for this vendor, aggregated from the structured metadata on recalled memories, plus the tactics still untried), `recall_memory(query)`, `get_playbook()`, `reflect_on_vendor(question)`. Base tools: `market_benchmarks()` (real award statistics for the vendor's category) and `submit_brief(...)`, which validates that tactics come from the fixed list of seven (`competing_quote`, `volume_commit`, `multi_year`, `quarter_end_timing`, `bundle`, `escalate_to_exec`, `payment_terms`) and that the ask is numeric.
+- **Fair memory ON/OFF comparison.** Memory OFF removes only the four memory tools. Same model, system prompt, loop, step limit (7) and base tools. The user message differs by one sentence ("Memory tools are available." vs. "You have no memory of past dealings.").
 - **Citations.** Every recall, playbook or reflect result is registered in a per-run evidence list with ids `m1`, `m2`, ... The model must cite them inside each tactic's `why`. The API returns `citations` (id, text, kind, date) and a `trace` of every tool call (truncated results), shown in the dashboard.
-- **Learning policy** (in the `SYSTEM` prompt). Every negotiation is treated as an experiment: a tactic that reached at least 85% of the vendor's best-ever discount is proven and ranked first; a tactic that got a small discount or made the vendor harden has failed and is not ranked first again; if nothing has proven itself, the agent ranks an untried tactic that fits the vendor and says it is an experiment. The opening ask is set near the best discount ever given. With no evidence the agent must say "unknown" and use low confidence.
+- **Learning policy** (in the `SYSTEM` prompt). Every negotiation is treated as an experiment: a tactic the scoreboard marks PROVEN (it has won) is ranked first; a tactic that was lost or made the vendor harden is not ranked first again; if nothing has proven itself, the agent ranks an untried tactic that fits the vendor and says it is an experiment. **Opening ask:** about 10% above the best discount a proven tactic achieved, otherwise 18% off list, and never lower, because an under-ask makes a good tactic look like it failed. (An earlier version anchored the ask to the best discount seen so far and spiralled down; see the evaluation notes below.) With no evidence the agent must say "unknown" and use low confidence.
 - **Failure handling.** Tool errors are returned to the model; on the last step the model is told to submit; if no brief is produced a low-confidence fallback is returned.
+
+## Chat and search
+
+The **Chat** tab (`app/chat.py`, `POST /api/chat`) lets a buyer ask questions across the whole vendor memory in plain language, for example "Which vendors changed owner or contact recently?" or "Which tactic has backfired most often, and with whom?". It is a second tool-calling agent over the same Hindsight bank:
+
+- `search_memory(query, vendor?)` searches every vendor, or one. `search_each_vendor(query)` runs the same search inside each vendor so a "which vendors..." question cannot miss one.
+- `cross_vendor_stats()` returns exact win, partial and loss counts per tactic with the vendors involved, computed from the structured metadata. Counting questions use this tool instead of an LLM's estimate.
+- `vendor_scoreboard`, `vendor_playbook`, `list_vendors` and `market_benchmarks` cover the rest.
+- Answers cite their evidence (`[m3]` chips that open the source memory) and show the tool trace. The assistant is told to say "in the memories I found" unless a sweep covered every vendor, and to say so plainly when memory has nothing. The conversation is kept client-side and the last 8 messages are sent each turn. A vendor can be pinned as the scope. The same spend guard applies.
 
 ## Learning-curve evaluation
 
@@ -134,10 +145,18 @@ Two separate models, both Azure OpenAI deployments (v1 endpoint), set in `.env`:
 
 `run_hindsight.sh` loads `.env` into the server's environment. Keep `.env` out of version control.
 
+## Team
+
+| | Role | GitHub |
+|---|---|---|
+| **Nandhini Selvam** | Team Lead, Solution Architect | [@NandhiniSelvam4](https://github.com/NandhiniSelvam4) |
+| **Ranjith Kumar G** | Senior AI Engineer | [@ranjith-kumar-28100](https://github.com/ranjith-kumar-28100) |
+
 ## Limitations and roadmap
 
 - The negotiation notes are synthetic, and the simulator is a simple model of vendor behaviour (one tactic works, one backfires, the rest give partial concessions). Learning-curve gains show the memory loop works under that model, not that real vendors behave this way.
 - The agent LLM is non-deterministic; single eval runs are noisy.
 - Outcomes are entered by hand or via Band; there is no ingestion yet.
+- Chat answers depend on what is retained; a search can miss a memory, so non-exhaustive answers are labelled as such. Vendors and negotiations are loaded from JSON files at startup; there is no add/remove-vendor UI or memory-editing yet.
 - No authentication. The API has open CORS and is meant for local use.
 - Roadmap: ingest real history from email, CRM and contract repositories; ERP and spend-data integrations; one bank per tenant for multi-team use; use Hindsight's memory-defense feature to keep personal data (contact names, emails) out of long-term memory where it is not needed.
