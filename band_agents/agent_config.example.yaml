@@ -1,0 +1,11 @@
+# Copy to agent_config.yaml and fill in the ID / API key shown once when you
+# create each "remote agent" in Band. Top-level keys must stay exactly as is.
+scout:
+  agent_id: "<Scout ID>"
+  api_key: "<Scout API key>"
+negotiator:
+  agent_id: "<Negotiator ID>"
+  api_key: "<Negotiator API key>"
+ledger:
+  agent_id: "<Ledger ID>"
+  api_key: "<Ledger API key>"
