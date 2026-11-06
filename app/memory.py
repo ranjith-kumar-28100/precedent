@@ -1,6 +1,9 @@
 """Thin wrapper over the Hindsight client: one bank, memories tagged per vendor."""
 import json
 import threading
+import time
+from collections import deque
+from datetime import datetime, timezone
 
 from hindsight_client import Hindsight
 
@@ -27,13 +30,79 @@ PLAYBOOK_QUERY = (
 
 _local = threading.local()
 
+# Ledger of every Hindsight call the app makes, newest last; surfaced in the UI as memory activity.
+LEDGER: deque = deque(maxlen=500)
+_LEDGER_LOCK = threading.Lock()
+_OP_KIND = {"recall": "recall", "retain": "retain", "reflect": "reflect"}
+
+
+def _vendor_of(kwargs: dict) -> str | None:
+    for t in kwargs.get("tags") or []:
+        if isinstance(t, str) and t.startswith("vendor:"):
+            return t.split(":", 1)[1]
+    mid = kwargs.get("mental_model_id") or kwargs.get("id") or ""
+    return mid.removeprefix("playbook-") if isinstance(mid, str) and mid.startswith("playbook-") else None
+
+
+def _detail(op: str, kwargs: dict) -> str:
+    for k in ("query", "source_query"):
+        if kwargs.get(k):
+            return str(kwargs[k])[:140]
+    if kwargs.get("content"):
+        return str(kwargs["content"])[:140]
+    return kwargs.get("mental_model_id") or kwargs.get("bank_id") or op
+
+
+def ledger_counts() -> dict:
+    counts = {"recall": 0, "retain": 0, "reflect": 0, "mental_model": 0, "other": 0}
+    with _LEDGER_LOCK:
+        for e in LEDGER:
+            counts[e["kind"]] += 1
+    return counts
+
+
+def ledger(limit: int = 100) -> list[dict]:
+    with _LEDGER_LOCK:
+        ops = list(LEDGER)[-limit:]
+    return [{k: v for k, v in e.items() if k != "kind"} for e in reversed(ops)]
+
+
+class _Tracked:
+    """Wraps the Hindsight client so each public call is timed and recorded in LEDGER."""
+
+    def __init__(self, inner: Hindsight):
+        self._inner = inner
+
+    def __getattr__(self, name):
+        attr = getattr(self._inner, name)
+        if name.startswith("_") or not callable(attr) or name in ("close", "get_version"):
+            return attr
+
+        def call(*args, **kwargs):
+            t0 = time.perf_counter()
+            entry = {"t": datetime.now(timezone.utc).isoformat(timespec="seconds"), "op": name,
+                     "vendor_id": _vendor_of(kwargs), "detail": _detail(name, kwargs),
+                     "kind": _OP_KIND.get(name, "mental_model" if "mental_model" in name else "other")}
+            try:
+                out = attr(*args, **kwargs)
+                entry.update(ok=True, error=None)
+                return out
+            except Exception as e:
+                entry.update(ok=False, error=f"{type(e).__name__}: {str(e)[:160]}")
+                raise
+            finally:
+                entry["ms"] = int((time.perf_counter() - t0) * 1000)
+                with _LEDGER_LOCK:
+                    LEDGER.append(entry)
+        return call
+
 
 def client() -> Hindsight:
     """One client per thread: the SDK's sync wrapper binds its HTTP session to the creating thread's
     event loop, so sharing a client across FastAPI worker / eval threads fails intermittently."""
     c = getattr(_local, "client", None)
     if c is None:
-        c = _local.client = Hindsight(base_url=config.HINDSIGHT_URL, timeout=600.0)
+        c = _local.client = _Tracked(Hindsight(base_url=config.HINDSIGHT_URL, timeout=600.0))
     return c
 
 
@@ -47,6 +116,31 @@ def ensure_bank(bank_id: str) -> None:
                          observations_mission=OBSERVATIONS_MISSION,
                          reflect_mission="You advise a procurement team preparing vendor negotiations. "
                                          "Be specific, cite evidence, flag when evidence is thin.")
+
+
+DIRECTIVES = [
+    ("Evidence before advice", "Only state a fact about a vendor if a retained memory supports it. When the "
+     "evidence is thin or missing, say so instead of guessing.", 10),
+    ("Respect what backfired", "If a tactic backfired with this vendor, flag it clearly and do not recommend it "
+     "again unless newer evidence shows the situation changed.", 9),
+    ("Newest evidence wins", "When memories conflict (new owner, departed contact, changed pricing policy), prefer "
+     "the most recent evidence and say what changed and when.", 8),
+    ("Never under-ask", "Do not advise opening below the best discount this vendor has already given us.", 7),
+]
+
+
+def ensure_directives(bank_id: str) -> None:
+    """Standing rules stored in the bank; Hindsight applies them to reflect and to playbook refreshes."""
+    have = {d["name"] for d in (client().list_directives(bank_id=bank_id).to_dict().get("items") or [])}
+    for name, content, prio in DIRECTIVES:
+        if name not in have:
+            client().create_directive(bank_id=bank_id, name=name, content=content, priority=prio)
+
+
+def directives(bank_id: str) -> list[dict]:
+    items = client().list_directives(bank_id=bank_id).to_dict().get("items") or []
+    return [{"name": d["name"], "content": d["content"], "priority": d.get("priority", 0),
+             "active": d.get("is_active", True)} for d in sorted(items, key=lambda d: -d.get("priority", 0))]
 
 
 def ensure_playbook(bank_id: str, vendor_id: str, vendor_name: str) -> None:
@@ -154,3 +248,75 @@ def recall_bank(bank_id: str, query: str, vendor_id: str | None = None, limit: i
         out.append({"id": r.id, "text": r.text, "kind": "observation" if r.type == "observation" else "fact",
                     "date": (r.occurred_start or r.mentioned_at or "")[:10] or None, "vendor_id": vid})
     return out
+
+
+def playbook_history(bank_id: str, vendor_id: str) -> dict:
+    """Every version Hindsight kept of a vendor's playbook. Each history entry holds the content that was
+    replaced at `changed_at` and the memories that version was built from; oldest first."""
+    mid = f"playbook-{vendor_id}"
+    try:
+        mm = client().get_mental_model(bank_id=bank_id, mental_model_id=mid)
+        hist = client().get_mental_model_history(bank_id=bank_id, mental_model_id=mid) or []
+    except Exception:
+        return {"vendor_id": vendor_id, "current": {"content": None, "refreshed_at": None}, "versions": []}
+    versions = []
+    for h in sorted(hist, key=lambda h: h.get("changed_at") or ""):
+        if not h.get("previous_content"):
+            continue  # the empty placeholder before the first refresh
+        based = (h.get("previous_reflect_response") or {}).get("based_on") or {}
+        versions.append({"at": h.get("changed_at"), "content": h["previous_content"],
+                         "sources": {k: len(based.get(k) or []) for k in ("world", "observation", "experience")}})
+    refreshed = getattr(mm, "last_refreshed_at", None)
+    return {"vendor_id": vendor_id,
+            "current": {"content": getattr(mm, "content", None), "refreshed_at": str(refreshed) if refreshed else None},
+            "versions": versions}
+
+
+def explore_recall(bank_id: str, query: str, vendor_id: str | None = None, as_of: str | None = None,
+                   limit: int = 15) -> dict:
+    """Recall with Hindsight's retrieval trace, so the UI can show which channels (semantic, keyword,
+    graph, temporal) surfaced each memory and how the reranker ordered them. No LLM call is involved."""
+    kw = dict(tags=[vtag(vendor_id)], tags_match="any_strict") if vendor_id else {}
+    if as_of:
+        kw["query_timestamp"] = f"{as_of}T23:59:59Z"
+    t0 = time.perf_counter()
+    res = client().recall(bank_id=bank_id, query=query, budget="mid", max_tokens=4000, trace=True,
+                          include_entities=True, types=["observation", "world", "experience"], **kw).to_dict()
+    ms = int((time.perf_counter() - t0) * 1000)
+    trace = res.get("trace") or {}
+    ranks: dict[str, dict] = {}
+    for rr in trace.get("retrieval_results") or []:
+        ch = {"semantic": "semantic", "bm25": "bm25", "graph": "graph", "temporal": "temporal"}.get(
+            rr.get("method_name"), rr.get("method_name"))
+        for hit in rr.get("results") or []:
+            cur = ranks.setdefault(hit["node_id"], {})
+            if ch not in cur or hit["rank"] < cur[ch]:
+                cur[ch] = hit["rank"]
+    rerank = {r["node_id"]: r for r in trace.get("reranked") or []}
+    out, ent_count = [], {}
+    hits = res.get("results") or []
+    if as_of:  # time travel: only what had happened by that date (observations are re-derived later, so drop them)
+        hits = [r for r in hits if r.get("type") != "observation"
+                and ((r.get("occurred_start") or r.get("mentioned_at") or "9999")[:10] <= as_of)]
+    for r in hits[:limit]:
+        md = r.get("metadata") or {}
+        if isinstance(md, str):
+            md = json.loads(md or "{}")
+        ents = r.get("entities") or []
+        for e in ents:
+            ent_count[e] = ent_count.get(e, 0) + 1
+        ch = ranks.get(r["id"], {})
+        rk = rerank.get(r["id"], {})
+        out.append({"id": r["id"], "text": r["text"], "type": r.get("type"),
+                    "date": (r.get("occurred_start") or r.get("mentioned_at") or "")[:10] or None,
+                    "vendor_id": next((t.split(":", 1)[1] for t in (r.get("tags") or []) if t.startswith("vendor:")), None),
+                    "tactic": md.get("tactic"), "outcome": md.get("outcome"), "entities": ents,
+                    "score": rk.get("rerank_score"),
+                    "channels": {c: ch.get(c) for c in ("semantic", "bm25", "graph", "temporal")},
+                    "rerank_rank": rk.get("rerank_rank"), "rrf_rank": rk.get("rrf_rank")})
+    summ = trace.get("summary") or {}
+    tc = (trace.get("query") or {}).get("temporal_constraint")
+    return {"results": out,
+            "entities": sorted(({"name": k, "count": v} for k, v in ent_count.items()), key=lambda e: -e["count"]),
+            "summary": {"visited": summ.get("total_nodes_visited"), "entry_points": summ.get("entry_points_found"),
+                        "ms": ms, "returned": len(out), "temporal_constraint": str(tc) if tc else None}}

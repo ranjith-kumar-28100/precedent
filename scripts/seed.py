@@ -11,6 +11,7 @@ vendors = {v["id"]: v for v in json.loads((config.DATA_DIR / "vendors.json").rea
 history = sorted(json.loads((config.DATA_DIR / "history.json").read_text()), key=lambda e: e["date"])
 
 memory.ensure_bank(config.BANK_ID)
+memory.ensure_directives(config.BANK_ID)
 for v in vendors.values():
     memory.ensure_playbook(config.BANK_ID, v["id"], v["name"])
 t0 = time.time()
