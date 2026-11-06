@@ -1,0 +1,12 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.hindsight/
+data/raw/
+data/eval_partial.json
+band_agents/agent_config.yaml
+band_agents/.venv/
+.playwright-mcp/
+*.log
+content/
