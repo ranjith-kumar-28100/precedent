@@ -1,0 +1,75 @@
+{
+  "source": "Estonian Public Procurement Register via datahub.io (nimistu/estonia-public-procurement)",
+  "n_awards": 19133,
+  "categories": {
+    "SaaS licences": {
+      "cpv_divisions": [
+        "72",
+        "48"
+      ],
+      "awards": 1193,
+      "award_eur_p25": 47000,
+      "award_eur_median": 96097,
+      "award_eur_p75": 200000,
+      "avg_bidders": 2.63,
+      "single_bidder_share": 0.533,
+      "negotiated_procedure_share": 0.262
+    },
+    "Freight & logistics": {
+      "cpv_divisions": [
+        "60",
+        "63"
+      ],
+      "awards": 260,
+      "award_eur_p25": 15000,
+      "award_eur_median": 65376,
+      "award_eur_p75": 302680,
+      "avg_bidders": 2.54,
+      "single_bidder_share": 0.267,
+      "negotiated_procedure_share": 0.065
+    },
+    "Raw materials": {
+      "cpv_divisions": [
+        "14",
+        "03",
+        "44"
+      ],
+      "awards": 191,
+      "award_eur_p25": 33538,
+      "award_eur_median": 70952,
+      "award_eur_p75": 204392,
+      "avg_bidders": 2.88,
+      "single_bidder_share": 0.234,
+      "negotiated_procedure_share": 0.047
+    },
+    "Contract manufacturing": {
+      "cpv_divisions": [
+        "42",
+        "31",
+        "34"
+      ],
+      "awards": 1403,
+      "award_eur_p25": 37352,
+      "award_eur_median": 89500,
+      "award_eur_p75": 240606,
+      "avg_bidders": 2.6,
+      "single_bidder_share": 0.382,
+      "negotiated_procedure_share": 0.073
+    },
+    "Facilities services": {
+      "cpv_divisions": [
+        "90",
+        "50",
+        "70",
+        "45"
+      ],
+      "awards": 7957,
+      "award_eur_p25": 29771,
+      "award_eur_median": 93820,
+      "award_eur_p75": 347828,
+      "avg_bidders": 5.16,
+      "single_bidder_share": 0.106,
+      "negotiated_procedure_share": 0.033
+    }
+  }
+}

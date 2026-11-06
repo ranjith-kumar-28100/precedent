@@ -1,0 +1,182 @@
+[
+  {
+    "id": "v01",
+    "name": "Northwind Cloudworks",
+    "category": "SaaS licences",
+    "contact": "Dana Whitfield, Account Executive",
+    "list_price_usd_annual": 486000,
+    "hidden": {
+      "list_markup": 0.24,
+      "floor_discount": 0.22,
+      "works": "competing_quote",
+      "fails": "escalate_to_exec",
+      "decision_maker": "Regional Sales Director",
+      "quirk": "Opens with a 'special' 5% discount that expires in 48 hours; folds quickly once a named rival quote is on the table."
+    }
+  },
+  {
+    "id": "v02",
+    "name": "Brightline CRM",
+    "category": "SaaS licences",
+    "contact": "Tomas Brandt, Senior Account Manager",
+    "list_price_usd_annual": 312000,
+    "hidden": {
+      "list_markup": 0.19,
+      "floor_discount": 0.18,
+      "works": "quarter_end_timing",
+      "fails": "multi_year",
+      "decision_maker": "VP Sales Operations",
+      "quirk": "Always sends a revised quote 2 days before quarter end; treats multi-year asks as a chance to lock in price escalators."
+    }
+  },
+  {
+    "id": "v03",
+    "name": "Halvorsen Freight Lines",
+    "category": "freight/logistics",
+    "contact": "Gudrun Halvorsen, Key Accounts Manager",
+    "list_price_usd_annual": 1240000,
+    "hidden": {
+      "list_markup": 0.15,
+      "floor_discount": 0.15,
+      "works": "volume_commit",
+      "fails": "competing_quote",
+      "decision_maker": "Director of Network Planning",
+      "quirk": "Prices lanes, not totals; rewards guaranteed weekly tonnage and gets defensive when told about rival carriers."
+    }
+  },
+  {
+    "id": "v04",
+    "name": "TransPacific Haulage Co.",
+    "category": "freight/logistics",
+    "contact": "Kenji Okafor, Commercial Lead",
+    "list_price_usd_annual": 895000,
+    "hidden": {
+      "list_markup": 0.13,
+      "floor_discount": 0.12,
+      "works": "payment_terms",
+      "fails": "volume_commit",
+      "decision_maker": "CFO",
+      "quirk": "Cash-flow obsessed; will trade rate for faster payment, but volume commitments make them add minimum-charge clauses."
+    }
+  },
+  {
+    "id": "v05",
+    "name": "Kestrel Alloys Ltd",
+    "category": "raw materials",
+    "contact": "Rhys Calloway, Sales Manager",
+    "list_price_usd_annual": 2150000,
+    "hidden": {
+      "list_markup": 0.16,
+      "floor_discount": 0.14,
+      "works": "multi_year",
+      "fails": "quarter_end_timing",
+      "decision_maker": "Chief Commercial Officer",
+      "quirk": "Indexes to LME; only moves on price when offered 24+ months of certainty. Quarter-end pressure makes them dig in."
+    }
+  },
+  {
+    "id": "v06",
+    "name": "Mondrian Polymers",
+    "category": "raw materials",
+    "contact": "Ilse Verhoeven, Regional Account Director",
+    "list_price_usd_annual": 1480000,
+    "hidden": {
+      "list_markup": 0.2,
+      "floor_discount": 0.17,
+      "works": "bundle",
+      "fails": "payment_terms",
+      "decision_maker": "Head of Commercial",
+      "quirk": "Hates discounting a single grade; gives real money when resin, masterbatch and packaging are bought together."
+    }
+  },
+  {
+    "id": "v07",
+    "name": "Aldercrest Contract Manufacturing",
+    "category": "contract manufacturing",
+    "contact": "Fiona McBride, Business Development Manager",
+    "list_price_usd_annual": 3300000,
+    "hidden": {
+      "list_markup": 0.22,
+      "floor_discount": 0.2,
+      "works": "escalate_to_exec",
+      "fails": "competing_quote",
+      "decision_maker": "COO",
+      "quirk": "Account managers have no authority; the COO's office produces a 'strategic partner' rate within a week of an exec-to-exec call."
+    }
+  },
+  {
+    "id": "v08",
+    "name": "Sintra Precision Assembly",
+    "category": "contract manufacturing",
+    "contact": "Joao Almeida, Account Manager",
+    "list_price_usd_annual": 1760000,
+    "hidden": {
+      "list_markup": 0.18,
+      "floor_discount": 0.16,
+      "works": "quarter_end_timing",
+      "fails": "bundle",
+      "decision_maker": "Plant General Manager",
+      "quirk": "Plant has capacity gaps at end of each quarter and will fill them at near-floor pricing; resists bundled NRE and unit pricing."
+    }
+  },
+  {
+    "id": "v09",
+    "name": "CleanSpan Facilities Group",
+    "category": "facilities services",
+    "contact": "Marguerite Doyle, Regional Manager",
+    "list_price_usd_annual": 640000,
+    "hidden": {
+      "list_markup": 0.21,
+      "floor_discount": 0.19,
+      "works": "bundle",
+      "fails": "escalate_to_exec",
+      "decision_maker": "Regional Operations Director",
+      "quirk": "Cross-sells janitorial, security and grounds; bristles when bypassed by senior contacts."
+    }
+  },
+  {
+    "id": "v10",
+    "name": "Meridian Building Services",
+    "category": "facilities services",
+    "contact": "Carlos Echeverria, Contracts Manager",
+    "list_price_usd_annual": 410000,
+    "hidden": {
+      "list_markup": 0.14,
+      "floor_discount": 0.13,
+      "works": "multi_year",
+      "fails": "competing_quote",
+      "decision_maker": "Managing Director",
+      "quirk": "Staff-retention driven; offers best rate on 3-year terms, treats rival quotes as a sign the buyer is not serious."
+    }
+  },
+  {
+    "id": "v11",
+    "name": "Packetry Security Inc.",
+    "category": "SaaS licences",
+    "contact": "Naomi Sandoval, Enterprise AE",
+    "list_price_usd_annual": 720000,
+    "hidden": {
+      "list_markup": 0.3,
+      "floor_discount": 0.25,
+      "works": "escalate_to_exec",
+      "fails": "payment_terms",
+      "decision_maker": "Chief Revenue Officer",
+      "quirk": "Starting quote carries a heavy cushion; AE is capped at 8% and routes everything larger to the CRO."
+    }
+  },
+  {
+    "id": "v12",
+    "name": "Ironbridge Steel Supply",
+    "category": "raw materials",
+    "contact": "Walt Dziedzic, Inside Sales Lead",
+    "list_price_usd_annual": 1920000,
+    "hidden": {
+      "list_markup": 0.12,
+      "floor_discount": 0.11,
+      "works": "volume_commit",
+      "fails": "multi_year",
+      "decision_maker": "VP Sales",
+      "quirk": "Thin-margin distributor; moves only on tonnage commitments and refuses to fix price beyond 90 days."
+    }
+  }
+]

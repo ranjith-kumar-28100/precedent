@@ -1,0 +1,38 @@
+[
+  {
+    "vendor_id": "v01",
+    "objective": "Renew 420-seat annual licence at or below 18% off list",
+    "context": "Stratus Group integration is underway; Alan Pierce signs discounts. We have a quote from PipelineIQ at $391k.",
+    "deadline": "2026-12-15"
+  },
+  {
+    "vendor_id": "v03",
+    "objective": "Re-bid Midwest and Texas lanes for 2027 at 14%+ off",
+    "context": "Our weekly volume rose to 130 loads. Fuel surcharge table must remain unchanged.",
+    "deadline": "2026-12-01"
+  },
+  {
+    "vendor_id": "v05",
+    "objective": "Lock in 2027-2030 premium over LME on 4,500 tonnes per year",
+    "context": "Current contract ends Dec 31. Market tightness from Turkish export restrictions.",
+    "deadline": "2026-12-20"
+  },
+  {
+    "vendor_id": "v07",
+    "objective": "Negotiate unit price on new controller assembly family (150k units/yr)",
+    "context": "Product launch in Q2 2027. Fiona is the day-to-day contact.",
+    "deadline": "2027-01-10"
+  },
+  {
+    "vendor_id": "v08",
+    "objective": "Secure rate on Q1 2027 PCBA build, target 15%",
+    "context": "Utilisation at the plant is reportedly low in December. Luis Ferreira is the GM.",
+    "deadline": "2026-12-18"
+  },
+  {
+    "vendor_id": "v11",
+    "objective": "Expand endpoint licences by 40% with 3-year term",
+    "context": "Naomi Sandoval is the AE; CRO Isaac Moreau hosted our last call. Budget approved at $540k.",
+    "deadline": "2027-01-15"
+  }
+]
