@@ -1,3 +1,5 @@
+![Precedent: Your vendors remember. Now you do too.](docs/brand/banner.png)
+
 # Precedent
 
 A buyer-side procurement-negotiation agent that remembers every vendor interaction in Hindsight and gets measurably better at each vendor over time.
