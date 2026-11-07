@@ -113,20 +113,37 @@ Logging an outcome through Ledger and then asking Negotiator for a new brief clo
 
 ## Architecture
 
+```mermaid
+flowchart LR
+  UI["React + TypeScript UI<br/>Vite, Tailwind, Recharts"] --> API["FastAPI<br/>briefs, chat,<br/>memory, eval"]
+  BAND["Band agents<br/>Scout, Negotiator, Ledger"] -. optional .-> API
+  API --> AGENTS["Agents<br/>negotiation brief + chat<br/>memory ON / OFF<br/>cite memory ids"]
+  AGENTS --> MEM["memory.py<br/>retain / recall / reflect<br/>operation ledger"]
+  MEM --> HS["Hindsight server<br/>open source, port 8888"]
+  HS --> BANK[("Memory bank<br/>facts, observations,<br/>vendor playbooks,<br/>directives")]
+  HS --> MINI["gpt-4.1-mini<br/>extraction,<br/>consolidation"]
+  AGENTS --> LLM["gpt-4.1<br/>Azure OpenAI"]
+  AGENTS --> DATA[("Market benchmarks<br/>19,133 real<br/>procurement awards")]
+  API -. eval .-> SIM["Simulator<br/>hidden vendor rules"]
 ```
- frontend/ -> web/dist (React UI)      band_agents/ (Scout, Negotiator, Ledger)
-          \                                   /
-           +------------- HTTP ---------------+
-                          |
-                FastAPI  app/main.py  (:8000)
-        /api/brief  /api/outcome  /api/memory  /api/eval
-              |                          |
-      app/agent.py  tool loop      app/sim.py (hidden profiles)
-        |         \                      |
- app/llm.py     app/memory.py ----> Hindsight server (:8888)
- gpt-4.1        (hindsight_client)    bank, observations, mental models
- (Azure)                                 |
-                                   gpt-4.1-mini (Azure): extraction, consolidation
+
+**How one brief is built.** With memory OFF, the memory tools are not registered, so only the first and last steps happen.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant UI as Dashboard
+  participant A as Agent (gpt-4.1)
+  participant H as Hindsight
+  UI->>A: POST /api/brief (vendor, objective)
+  A->>H: tactic_scoreboard: recall with metadata
+  H-->>A: tries, outcomes, best discount per tactic
+  A->>H: recall_memory: tag-scoped to this vendor
+  H-->>A: facts and observations, with dates
+  A->>H: get_playbook: the vendor's mental model
+  H-->>A: Hindsight-written playbook
+  A->>UI: submit_brief: ranked tactics, opening ask, approver, citations [m1]…
+  Note over UI,H: After the deal, POST /api/outcome retains it, and consolidation refreshes the playbook.
 ```
 
 More detail, with Mermaid diagrams and sequence flows, is in [docs/architecture.md](docs/architecture.md).
