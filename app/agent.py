@@ -83,6 +83,14 @@ def t_submit(run: Run, **args) -> str:
         ask = float(args.get("recommended_opening_ask_pct"))
     except (TypeError, ValueError):
         return "Rejected: recommended_opening_ask_pct must be a number (percent off list)."
+    for t in tactics:  # the model sometimes answers 9.5 or 95 instead of 0.95; normalise to 0..1
+        try:
+            c = float(t.get("confidence", 0))
+        except (TypeError, ValueError):
+            c = 0.0
+        while c > 1:
+            c /= 10 if c <= 10 else 100
+        t["confidence"] = round(max(0.0, c), 2)
     run.brief = {"summary": str(args.get("summary", "")), "vendor_profile": str(args.get("vendor_profile", "unknown")),
                  "decision_maker": str(args.get("decision_maker", "unknown")),
                  "recommended_opening_ask_pct": ask, "tactics": tactics,
