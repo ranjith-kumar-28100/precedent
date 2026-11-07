@@ -73,6 +73,13 @@ def test_submit_rejects_non_numeric_ask():
     assert agent.t_submit(run, **{**BRIEF, "recommended_opening_ask_pct": "lots"}).startswith("Rejected")
 
 
+def test_submit_normalises_confidence_scale():
+    run = agent.Run(bank_id="b", vendor={"id": "v01"})
+    tactics = [{"tactic": "multi_year", "why": "", "confidence": c} for c in (10, 95, 0.6)]
+    agent.t_submit(run, **{**BRIEF, "tactics": tactics})
+    assert [t["confidence"] for t in run.brief["tactics"]] == [1.0, 0.95, 0.6]
+
+
 def test_brief_falls_back_when_agent_never_submits(api, monkeypatch):
     monkeypatch.setattr(llm, "chat_message", ScriptedLLM([]))  # always answers with plain text
     vid = api.get("/api/vendors").json()[0]["id"]

@@ -165,7 +165,8 @@ SYSTEM = ("You are Precedent's assistant for a procurement team. Answer question
           "I found'. Cite evidence inline like [m3]; if memory has nothing "
           "relevant say so plainly, never guess or invent history, names or numbers; keep answers short, use bullet "
           "points for lists, and name the vendor each fact belongs to. If the user pinned a vendor scope, stay within "
-          "it. Tactics are: " + ", ".join(TACTICS) + ". At most %d tool rounds." % (MAX_STEPS - 1))
+          "it. Tactics are: " + ", ".join(TACTICS) + "; in answers write them in plain words (\"competing quote\", not "
+          "\"competing_quote\"). At most %d tool rounds." % (MAX_STEPS - 1))
 
 
 NO_MEMORY_TOOLS = {"list_vendors", "market_benchmarks"}

@@ -4,6 +4,10 @@
 
 A buyer-side procurement-negotiation agent that remembers every vendor interaction in Hindsight and gets measurably better at each vendor over time.
 
+![The same agent on the same Kestrel Alloys renewal. Memory OFF: 50% confidence, no evidence, assumes the Sales Manager decides. Memory ON: 98% confidence, 26 cited memories, names the Chief Commercial Officer who approves larger discounts.](assets/brief-memory-off-vs-on.png)
+
+*Same agent, same model, same prompt, live output. Left: memory OFF, no evidence. Right: memory ON, every claim cites a Hindsight memory and the real approver is named.*
+
 ## The problem
 
 What a procurement team knows about a vendor lives in people's heads and inboxes: which tactic made the account manager fold, who really approves discounts, that the "48-hour special" is theatre, that the vendor was acquired and the old decision maker is gone. When a buyer changes jobs, that knowledge leaves with them, and the next negotiation starts from the list price again.
