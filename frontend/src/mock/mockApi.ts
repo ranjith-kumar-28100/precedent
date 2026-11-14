@@ -126,6 +126,22 @@ function citationsFor(vid: string): Citation[] {
   return out.map((c, i) => ({ ...c, id: `m${i + 1}` }))
 }
 
+// ---- verify before you trust (mirrors app/agent.py verification_net) ----
+const VERIFIED = new Set<string>()
+const STALE_DAYS = 90
+function withChecks(r: BriefResp, useMemory: boolean): BriefResp {
+  const vid = r.vendor_id, name = vendorName(vid)
+  const ask = `Who at ${name} approves a discount of this size today?`
+  const dm = r.brief.decision_maker.replace(/\s*\[m\d+\]/g, '').trim()
+  const newest = episodesOf(vid).filter((e) => e.decision_maker_seen).map((e) => e.date).pop() ?? null
+  const age = newest ? (Date.now() - new Date(newest).getTime()) / 864e5 : Infinity
+  let reason: string | null = null
+  if (!useMemory || !newest) reason = 'No cited memory supports who decides.'
+  else if (age > STALE_DAYS && !VERIFIED.has(vid)) reason = `Newest evidence is from ${newest}, more than ${STALE_DAYS} days ago; people and policies change.`
+  const needs_verification = reason ? [{ claim: `Decision maker: ${dm}`, reason, last_evidence_date: useMemory ? newest : null, ask }] : []
+  return { ...r, brief: { ...r.brief, needs_verification } }
+}
+
 function briefOn(vid: string): BriefResp {
   const st = stats(vid)
   const ranked = Object.entries(st).sort((a, b) => b[1].won - a[1].won || b[1].best - a[1].best)
@@ -290,8 +306,21 @@ export async function mockApi(path: string, body?: any): Promise<unknown> {
     case path === '/brief':
       await sleep(body.use_memory ? 1400 : 800)
       log('recall', body.vendor_id, 1840, `tactic scoreboard · tags=vendor:${body.vendor_id}`, true)
-      if (!body.use_memory) return briefOff(body.vendor_id)
-      return MEMORY[body.vendor_id] || episodesOf(body.vendor_id).length ? briefOn(body.vendor_id) : briefColdStart(body.vendor_id)
+      if (!body.use_memory) return withChecks(briefOff(body.vendor_id), false)
+      return withChecks(MEMORY[body.vendor_id] || episodesOf(body.vendor_id).length ? briefOn(body.vendor_id) : briefColdStart(body.vendor_id), true)
+    case path === '/verify/draft': {
+      await sleep(900)
+      const v = VENDORS.find((x) => x.id === body.vendor_id)
+      const first = (v?.contact ?? '').split(/[ ,]/)[0] || 'there'
+      const lines = (body.items as { claim: string; ask: string }[]).map((i) => `- ${i.ask || i.claim}`).join('\n')
+      return { to: v?.contact ?? 'unknown', subject: `Quick confirmation before our next discussion`,
+        body: `Hi ${first},\n\nAhead of our upcoming negotiation, could you confirm the following so our records are current?\n${lines}\n\nThank you,\n[Your name]` }
+    }
+    case path === '/verify/confirm':
+      await sleep(700)
+      VERIFIED.add(body.vendor_id)
+      log('retain', body.vendor_id, 2100, `verified fact · tags=vendor:${body.vendor_id},category:verified`, true)
+      return { retained: true }
     case path.startsWith('/chat/suggestions'):
       return suggestions(new URLSearchParams(path.split('?')[1] ?? '').get('vendor_id'))
     case path === '/chat':

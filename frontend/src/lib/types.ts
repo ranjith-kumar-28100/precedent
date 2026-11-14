@@ -5,8 +5,10 @@ export type TraceStep = { step: number; tool: string; args: unknown; result: unk
 export type Tactic = { tactic: string; why: string; confidence: number }
 export type Brief = {
   summary: string; vendor_profile: string; decision_maker: string; recommended_opening_ask_pct: number
-  tactics: Tactic[]; watch_outs: string[]
+  tactics: Tactic[]; watch_outs: string[]; needs_verification?: VerifyItem[]
 }
+export type VerifyItem = { claim: string; reason: string; last_evidence_date: string | null; ask: string }
+export type VerifyDraft = { to: string; subject: string; body: string }
 export type BriefResp = { vendor_id: string; use_memory: boolean; brief: Brief; citations: Citation[]; trace?: TraceStep[]; latency_ms: number }
 export type ChatResp = { answer: string; use_memory: boolean; citations: Citation[]; trace: TraceStep[]; latency_ms: number }
 export type Episode = {

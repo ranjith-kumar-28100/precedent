@@ -183,6 +183,62 @@ def outcome(req: OutcomeReq):
     return {"retained": True}
 
 
+class VerifyItem(BaseModel):
+    claim: str = Field(min_length=1, max_length=300)
+    ask: str = Field("", max_length=300)
+
+
+class VerifyDraftReq(BaseModel):
+    vendor_id: str
+    items: list[VerifyItem] = Field(min_length=1, max_length=5)
+
+
+@app.post("/api/verify/draft")
+def verify_draft(req: VerifyDraftReq):
+    """Draft (never send) a short email asking the vendor's contact to confirm each claim."""
+    v = vendor_or_404(req.vendor_id)
+    to = v.get("contact") or "unknown"
+    asks = "\n".join(f"- {i.ask or i.claim}" for i in req.items)
+    prompt = [{"role": "system", "content": "You write short, polite, professional emails for a procurement buyer. "
+               "Plain text. First line 'Subject: ...', then a blank line, then the body. No placeholders except "
+               "the sign-off name '[Your name]'. Do not invent facts or numbers."},
+              {"role": "user", "content": f"Write to {to} at {v['name']}. Ahead of our upcoming negotiation, ask them to "
+               f"confirm the following so our records are current:\n{asks}"}]
+    try:
+        text = (llm.chat_message(prompt, temperature=0.3).get("content") or "").strip()
+    except llm.BudgetExceeded:
+        raise HTTPException(402, "The AI budget for this session is used up, so we can't draft the email right now. "
+                                 "Raise AGENT_BUDGET_USD to continue.")
+    except Exception as e:
+        raise HTTPException(502, f"draft failed: {type(e).__name__}: {e}")
+    subject, _, body = text.partition("\n")
+    if not subject.lower().startswith("subject:"):
+        subject, body = f"Quick confirmation before our next discussion ({v['name']})", text
+    return {"to": to, "subject": subject.split(":", 1)[-1].strip(), "body": body.strip()}
+
+
+class VerifyConfirmReq(BaseModel):
+    vendor_id: str
+    claim: str = Field(min_length=1, max_length=300)
+    answer: str = Field(min_length=1, max_length=2000)
+    source: str = Field("vendor email", max_length=80)
+    date: str | None = None
+
+
+@app.post("/api/verify/confirm")
+def verify_confirm(req: VerifyConfirmReq):
+    """Retain the vendor's answer as a dated, verified memory; the next brief cites it."""
+    from datetime import date
+    v = vendor_or_404(req.vendor_id)
+    day = req.date or date.today().isoformat()
+    memory.ensure_playbook(config.BANK_ID, v["id"], v["name"])
+    try:
+        memory.retain_verified_fact(config.BANK_ID, v, req.claim, req.answer, req.source, day)
+    except Exception as e:
+        raise HTTPException(502, f"could not save to memory: {type(e).__name__}: {e}")
+    return {"retained": True}
+
+
 @app.get("/api/memory/{vendor_id}")
 def memory_view(vendor_id: str):
     vendor_or_404(vendor_id)
