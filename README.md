@@ -210,7 +210,7 @@ How it's secured (`app/auth.py`):
 
 ## Team
 
-**The R&N Protocol**
+**The R&N Protocal**
 
 | | Role | GitHub |
 |---|---|---|
