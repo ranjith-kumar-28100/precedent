@@ -119,19 +119,16 @@ Logging an outcome through Ledger and then asking Negotiator for a new brief clo
 
 ## Architecture
 
-```mermaid
-flowchart LR
-  UI["React + TypeScript UI<br/>Vite, Tailwind, Recharts"] --> API["FastAPI<br/>briefs, chat,<br/>memory, eval"]
-  BAND["Band agents<br/>Scout, Negotiator, Ledger"] -. optional .-> API
-  API --> AGENTS["Agents<br/>negotiation brief + chat<br/>memory ON / OFF<br/>cite memory ids"]
-  AGENTS --> MEM["memory.py<br/>retain / recall / reflect<br/>operation ledger"]
-  MEM --> HS["Hindsight server<br/>open source, port 8888"]
-  HS --> BANK[("Memory bank<br/>facts, observations,<br/>vendor playbooks,<br/>directives")]
-  HS --> MINI["gpt-4.1-mini<br/>extraction,<br/>consolidation"]
-  AGENTS --> LLM["gpt-4.1<br/>Azure OpenAI"]
-  AGENTS --> DATA[("Market benchmarks<br/>19,133 real<br/>procurement awards")]
-  API -. eval .-> SIM["Simulator<br/>hidden vendor rules"]
-```
+![Precedent architecture: the buyer uses the React dashboard or Band chat agents; the FastAPI service runs a GPT-4.1 tool-calling negotiation agent; the agent's memory tools retain, recall and reflect through Hindsight, which extracts facts, recalls across four channels, writes versioned vendor playbooks and applies directives; outcomes flow back into memory in a learning loop.](assets/architecture.png)
+
+**Read it left to right, in four steps.**
+
+1. **Ask.** A buyer opens a deal in the dashboard (or asks the Negotiator in Band) and requests a brief.
+2. **Investigate.** The API runs a GPT-4.1 tool-calling agent. It starts with `tactic_scoreboard` (wins and losses counted in code from structured metadata, so the model can't miscount), then pulls evidence with `recall_memory`, reads the vendor's playbook, and optionally reflects. Market benchmarks give a real price baseline.
+3. **Remember.** Every memory call goes to the open-source Hindsight server. It turns raw notes into dated facts and entities, recalls across four channels (semantic, keyword, graph, temporal) with reranking, consolidates facts into observations, keeps a self-written playbook per vendor with its full version history, and applies directives we stored in the bank. Each memory is tagged by vendor, so vendors never mix.
+4. **Learn.** The brief comes back with every claim cited, and any stale or uncited claim is flagged under *Needs verification*. After the deal, the buyer logs the outcome, pastes a call transcript, saves a vendor's confirmation, or adds a new vendor. Each one is retained, and Hindsight rewrites that vendor's playbook. The next brief starts from there.
+
+Two models with two jobs: GPT-4.1 reasons for the agent; GPT-4.1-mini runs Hindsight's background extraction and consolidation (and drafts suggested chat questions for vendors with no history).
 
 **How one brief is built.** With memory OFF, the memory tools are not registered, so only the first and last steps happen.
 
@@ -149,6 +146,7 @@ sequenceDiagram
   A->>H: get_playbook: the vendor's mental model
   H-->>A: Hindsight-written playbook
   A->>UI: submit_brief: ranked tactics, opening ask, approver, citations [m1]…
+  Note over A,UI: A check in code flags a decision maker with no citation or evidence older than 90 days.
   Note over UI,H: After the deal, POST /api/outcome retains it, and consolidation refreshes the playbook.
 ```
 
@@ -184,10 +182,12 @@ Two separate models, both Azure OpenAI deployments (v1 endpoint), set in `.env`:
 
 ## Team
 
+**The R&N Protocol**
+
 | | Role | GitHub |
 |---|---|---|
-| **Nandhini Selvam** | Team Lead, Solution Architect | [@NandhiniSelvam4](https://github.com/NandhiniSelvam4) |
-| **Ranjith Kumar G** | Senior AI Engineer | [@ranjith-kumar-28100](https://github.com/ranjith-kumar-28100) |
+| **Nandhini Selvam** | AI Engineer | [@NandhiniSelvam4](https://github.com/NandhiniSelvam4) |
+| **Ranjith Kumar G** | AI Engineer | [@ranjith-kumar-28100](https://github.com/ranjith-kumar-28100) |
 
 ## Limitations and roadmap
 
