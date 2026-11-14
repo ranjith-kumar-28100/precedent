@@ -37,6 +37,8 @@ Precedent uses [Hindsight](https://github.com/vectorize-io/hindsight) (open sour
 
 **Outcomes feed back.** `POST /api/outcome` calls `memory.retain_episode`; the next brief can recall it, and consolidation then updates the observations and playbook.
 
+**New vendors start from zero.** "Add vendor" on the Brief screen (`POST /api/vendors`) creates the vendor, sets up its playbook, and calls `memory.retain_profile` to save what the buyer already knows (contact, list price, optional notes) as the vendor's first memory. The profile has no `tactic` metadata, so the scoreboard correctly reports no past negotiations. You can watch learning from a cold start: the first brief says there's no history, you log one outcome, and the next brief cites it. Added vendors are kept in `data/custom_vendors.json` and the learning-curve simulator ignores them, because they have no hidden profile.
+
 ## Agent design
 
 `app/agent.py`, function `make_brief`, is a tool-calling loop over an Azure OpenAI chat-completions endpoint (`app/llm.py`, `chat_message`, with retry/backoff on 429/5xx and dropped connections).
@@ -188,6 +190,6 @@ Two separate models, both Azure OpenAI deployments (v1 endpoint), set in `.env`:
 - The negotiation notes are synthetic, and the simulator is a simple model of vendor behaviour (one tactic works, one backfires, the rest give partial concessions). Learning-curve gains show the memory loop works under that model, not that real vendors behave this way.
 - The agent LLM is non-deterministic; single eval runs are noisy.
 - Outcomes are entered by hand or via Band; there is no ingestion yet.
-- Chat answers depend on what is retained; a search can miss a memory, so non-exhaustive answers are labelled as such. Vendors and negotiations are loaded from JSON files at startup; there is no add/remove-vendor UI or memory-editing yet.
+- Chat answers depend on what is retained; a search can miss a memory, so non-exhaustive answers are labelled as such. You can add vendors from the UI, but you can't yet remove a vendor or edit memories.
 - No authentication. The API has open CORS and is meant for local use.
 - Roadmap: ingest real history from email, CRM and contract repositories; ERP and spend-data integrations; one bank per tenant for multi-team use; use Hindsight's memory-defense feature to keep personal data (contact names, emails) out of long-term memory where it is not needed.

@@ -20,6 +20,7 @@ export default function VendorMemory() {
   }, [vid])
 
   const eps = mem.data?.episodes ?? []
+  const obs = mem.data?.observations ?? []
   const won = eps.filter((e) => e.outcome === 'won').length
   const best = eps.reduce((m, e) => Math.max(m, e.final_discount), 0)
   const vendor = vendors.find((v) => v.id === vid)
@@ -56,10 +57,10 @@ export default function VendorMemory() {
         <Card className="grid grid-cols-2 gap-4 sm:grid-cols-5">
           <Stat label="Episodes" value={mem.data ? eps.length : '–'} sub="retained negotiations" />
           <Stat label="Facts" value={mem.data?.facts ?? '–'} sub="extracted by Hindsight" />
-          <Stat label="Observations" value={mem.data?.observations.length ?? '–'} sub="consolidated beliefs" />
+          <Stat label="Observations" value={mem.data ? obs.length : '–'} sub="consolidated beliefs" />
           <Stat label="Win rate" value={mem.data ? `${won}/${eps.length}` : '–'} sub={mem.data ? `best ${pct(best, 0)} off` : 'won / tried'} />
-          <Stat label="Playbook versions" value={hist.data ? hist.data.versions.length + (hist.data.current.content ? 1 : 0) : '–'}
-            sub={hist.data?.current.refreshed_at ? `refreshed ${timeAgo(hist.data.current.refreshed_at)}` : 'mental model'} tone="accent" />
+          <Stat label="Playbook versions" value={hist.data ? (hist.data.versions?.length ?? 0) + (hist.data.current?.content ? 1 : 0) : '–'}
+            sub={hist.data?.current?.refreshed_at ? `refreshed ${timeAgo(hist.data.current.refreshed_at)}` : 'mental model'} tone="accent" />
         </Card>
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
@@ -79,9 +80,9 @@ export default function VendorMemory() {
             </Card>
             <Card>
               <CardHeader icon={<Lightbulb size={15} className="text-faint" />} title="Observations" sub="Durable beliefs consolidated from several facts" />
-              {mem.loading ? <SkeletonLines n={5} /> : mem.data?.observations.length ? (
+              {mem.loading ? <SkeletonLines n={5} /> : obs.length ? (
                 <ul className="max-h-[340px] space-y-2 overflow-y-auto pr-1 scroll-thin">
-                  {mem.data.observations.slice(0, 12).map((o, i) => (
+                  {obs.slice(0, 12).map((o, i) => (
                     <li key={i} className="flex gap-2.5 text-xs leading-5">
                       {o.proof_count > 0
                         ? <span className="num mt-0.5 shrink-0 rounded bg-subtle px-1 font-mono text-[10px] text-muted" title="Supporting facts">×{o.proof_count}</span>
@@ -116,7 +117,7 @@ export default function VendorMemory() {
                 </li>
               ))}
             </ol>
-          ) : <Empty title="No episodes" />}
+          ) : <Empty title="No episodes yet" sub="Log a negotiation outcome from the Brief page and it appears here." />}
         </Card>
       </div>
     </div>
@@ -127,13 +128,13 @@ function Playbook({ hist, loading, error, fallback }: { hist: PlaybookHistory | 
   const [view, setView] = useState<'current' | 'history'>('current')
   const versions = useMemo(() => {
     if (!hist) return []
-    const v = hist.versions.map((x, i) => ({ ...x, label: `v${i + 1}` }))
-    if (hist.current.content) v.push({ at: hist.current.refreshed_at ?? '', content: hist.current.content, sources: { world: 0, observation: 0, experience: 0 }, label: `v${v.length + 1}` })
+    const v = (hist.versions ?? []).map((x, i) => ({ ...x, label: `v${i + 1}` }))
+    if (hist.current?.content) v.push({ at: hist.current.refreshed_at ?? '', content: hist.current.content, sources: { world: 0, observation: 0, experience: 0 }, label: `v${v.length + 1}` })
     return v
   }, [hist])
   const [pick, setPick] = useState<number | null>(null)
   useEffect(() => { setPick(null); setView('current') }, [hist])
-  const cur = hist?.current.content ?? fallback
+  const cur = hist?.current?.content ?? fallback
   const base = pick ?? Math.max(0, versions.length - 2)
   const diff = useMemo(() => (versions.length > 1 ? diffLines(versions[base].content, versions[versions.length - 1].content) : []), [versions, base])
   const added = diff.filter((d) => d.kind === 'add').length
@@ -148,7 +149,8 @@ function Playbook({ hist, loading, error, fallback }: { hist: PlaybookHistory | 
       {error && !cur && <ErrorBanner error={error} />}
       {loading && !cur ? <SkeletonLines n={10} /> : view === 'current' ? (
         cur ? <div className="max-h-[560px] overflow-y-auto pr-2 scroll-thin"><Markdown>{cur}</Markdown></div> : <Empty title="No playbook yet" sub="It appears after the first consolidation." />
-      ) : versions.length < 2 ? <Empty title="Only one version so far" sub="History appears once the playbook has been refreshed after new outcomes." /> : (
+      ) : versions.length === 0 ? <Empty title="No playbook versions yet" sub="The first version is written after this vendor’s memories are consolidated." />
+        : versions.length < 2 ? <Empty title="Only one version so far" sub="History appears once the playbook has been refreshed after new outcomes." /> : (
         <div className="space-y-3">
           <ol className="flex flex-wrap items-center gap-1.5" aria-label="Versions">
             {versions.map((v, i) => (

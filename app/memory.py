@@ -172,6 +172,17 @@ def retain_episode(bank_id: str, ep: dict, vendor: dict) -> None:
                               "date": ep["date"]})
 
 
+def retain_profile(bank_id: str, vendor: dict, notes: str, date: str) -> None:
+    """A new vendor's first memory: who they are and what we know. No "tactic" metadata, so the
+    tactic scoreboard keeps counting real negotiations only."""
+    text = (f"Vendor profile for {vendor['name']} ({vendor['category']}), recorded {date}. "
+            f"Contact: {vendor.get('contact', 'unknown')}. List price ${vendor['list_price_usd_annual']:,}/yr. "
+            "No negotiations with this vendor are on record yet." + (f" What we know: {notes}" if notes else ""))
+    client().retain(bank_id=bank_id, content=text, timestamp=date, context="Vendor profile recorded by the buyer",
+                    tags=[vtag(vendor["id"]), f"category:{vendor['category']}"], document_id=f"profile-{vendor['id']}",
+                    metadata={"kind": "profile", "date": date})
+
+
 def recall_vendor(bank_id: str, vendor_id: str, query: str, limit: int = 12) -> list[dict]:
     res = client().recall(bank_id=bank_id, query=query, tags=[vtag(vendor_id)],
                           tags_match="any_strict", budget="mid", max_tokens=3000,
