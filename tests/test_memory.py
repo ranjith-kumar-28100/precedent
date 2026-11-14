@@ -52,3 +52,23 @@ def test_episode_text_keeps_numbers_exact():
           "outcome": "lost", "notes": "They added a minimum charge."}
     text = memory.episode_text(ep, {"name": "TransPacific", "category": "logistics"})
     assert "asked for 10% off and got 1.0% (lost)" in text and "volume commit" in text
+
+
+def test_bank_stats_reads_hindsight_totals(monkeypatch):
+    from types import SimpleNamespace
+    import httpx
+    from app import memory
+    pages = {"stats": {"total_documents": 61, "total_nodes": 344, "total_observations": 157},
+             "operations": {"operations": [{"operation_type": "refresh_mental_model", "status": "completed"},
+                                           {"operation_type": "refresh_mental_model", "status": "failed"},
+                                           {"operation_type": "consolidation", "status": "completed"}], "total": 3}}
+    monkeypatch.setattr(httpx, "get", lambda url, **k: SimpleNamespace(json=lambda: pages[url.rsplit("/", 1)[1]]))
+    monkeypatch.setitem(memory._STATS, "at", 0.0)
+    assert memory.bank_stats("b") == {"documents": 61, "memories": 344, "observations": 157, "reflect": 1}
+
+
+def test_bank_stats_is_none_when_hindsight_down(monkeypatch):
+    from app import memory
+    monkeypatch.setitem(memory._STATS, "at", 0.0)
+    monkeypatch.setitem(memory._STATS, "bank", None)
+    assert memory.bank_stats("b") is None  # offline fixture makes httpx.get raise

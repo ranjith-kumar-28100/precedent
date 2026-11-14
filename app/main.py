@@ -67,7 +67,7 @@ def health():
         ok = False
     return {"hindsight": ok, "bank_id": config.BANK_ID, "llm": config.LLM_MODEL, "llm_calls": llm.CALLS["agent"],
             "agent_spend_usd": round(llm.SPEND["usd"], 3), "agent_budget_usd": llm.BUDGET_USD,
-            "ledger_counts": memory.ledger_counts()}
+            "ledger_counts": memory.ledger_counts(), "bank_stats": memory.bank_stats(config.BANK_ID) if ok else None}
 
 
 @app.get("/api/vendors")
