@@ -1,7 +1,7 @@
-import { FlaskConical, Info, Lock } from 'lucide-react'
+import { FlaskConical, Info, Lock, Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { CartesianGrid, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Button, Card, CardHeader, ErrorBanner, Skeleton, Stat } from '../components/ui'
+import { Area, CartesianGrid, ComposedChart, Legend, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Button, Card, CardHeader, CountUp, ErrorBanner, Skeleton, Stat } from '../components/ui'
 import { useApi } from '../lib/hooks'
 import type { EvalResp } from '../lib/types'
 
@@ -22,18 +22,23 @@ export default function Curve() {
   const ev = useApi<EvalResp>('/eval/cached')
   useThemeTick()
   const s = ev.data?.series
-  const rows = s ? s.memory.map((m, i) => ({ ep: m.episode, on: m.savings_pct, off: s.baseline[i]?.savings_pct })) : []
+  // `gap` is stacked on top of the baseline so the band between the two lines can be shaded.
+  const rows = s ? s.memory.map((m, i) => {
+    const off = s.baseline[i]?.savings_pct
+    return { ep: m.episode, on: m.savings_pct, off, gap: off == null ? 0 : Math.max(0, m.savings_pct - off) }
+  }) : []
   const last5 = (arr: { savings_pct: number }[]) => arr.slice(-5).reduce((a, b) => a + b.savings_pct, 0) / Math.min(5, arr.length || 1)
   const firstWin = s?.memory.find((m) => Number(m.won) > 0)?.episode
   const finalWins = (arr?: { won: number | boolean }[]) => (arr?.length ? Number(arr[arr.length - 1].won) : 0)
   const allWon = s?.memory.find((m) => Number(m.won) === finalWins(s.memory))?.episode
-  const c = { accent: tok('accent'), faint: tok('faint'), line: tok('line'), muted: tok('muted'), panel: tok('panel'), fg: tok('fg') }
+  const gap = s && s.memory.length && s.baseline.length ? last5(s.memory) - last5(s.baseline) : null
+  const c = { mem: tok('mem'), faint: tok('faint'), line: tok('line'), muted: tok('muted'), panel: tok('panel'), fg: tok('fg') }
 
   return (
     <div className="space-y-5">
       {ev.error && <ErrorBanner error={ev.error} onRetry={ev.reload} />}
       <Card className="grid grid-cols-2 gap-5 md:grid-cols-4">
-        <Stat label="Memory ON · last 5" value={s ? `${last5(s.memory).toFixed(1)}%` : '–'} sub="of max possible discount" tone="accent" />
+        <Stat label="Memory ON · last 5" value={s ? `${last5(s.memory).toFixed(1)}%` : '–'} sub="of max possible discount" tone="mem" />
         <Stat label="Memory OFF · last 5" value={s ? `${last5(s.baseline).toFixed(1)}%` : '–'} sub="same agent, no memory" tone="muted" />
         <Stat label="Vendors won" value={s ? `${finalWins(s.memory)} of ${ev.data?.vendors ?? 3}` : '–'} sub={firstWin ? `first at negotiation ${firstWin}, all ${finalWins(s?.memory)} by ${allWon}; baseline ${finalWins(s?.baseline)}` : ''} />
         <Stat label="Setup" value={s ? `${ev.data?.episodes ?? s.memory.length} × ${ev.data?.vendors ?? 3}` : '–'} sub="negotiations × simulated vendors" />
@@ -42,10 +47,20 @@ export default function Curve() {
       <Card>
         <CardHeader title="Savings captured per negotiation" sub="Mean across vendors, % of each vendor’s best possible discount. Starts from an empty memory bank."
           right={<span title="A fresh run calls the LLM about 300 times. Disabled in the dashboard to protect the budget."><Button size="sm" disabled><Lock size={12} />Run fresh evaluation</Button></span>} />
+        {gap !== null && (
+          <div className="rise mb-3 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+            <span className="num inline-flex items-center gap-1.5 rounded-full border border-mem/25 bg-mem-soft px-3 py-1 text-[15px] font-semibold tracking-tight text-mem">
+              <Sparkles size={14} aria-hidden />
+              <span aria-hidden>{gap < 0 ? '−' : '+'}<CountUp value={Math.abs(gap)} decimals={1} /> pts with memory</span>
+              <span className="sr-only">{`${gap < 0 ? 'minus' : 'plus'} ${Math.abs(gap).toFixed(1)} points with memory`}</span>
+            </span>
+            <span className="text-xs text-muted">mean of the last 5 negotiations</span>
+          </div>
+        )}
         <div className="h-[340px]">
           {!s ? <Skeleton className="h-full w-full" /> : (
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={rows} margin={{ top: 8, right: 12, left: -8, bottom: 4 }}>
+              <ComposedChart data={rows} margin={{ top: 8, right: 12, left: -8, bottom: 4 }}>
                 <CartesianGrid stroke={c.line} vertical={false} />
                 <XAxis dataKey="ep" tick={{ fill: c.muted, fontSize: 11 }} tickLine={false} axisLine={{ stroke: c.line }} label={{ value: 'Negotiation #', position: 'insideBottomRight', offset: -2, fill: c.faint, fontSize: 11 }} />
                 <YAxis domain={[0, 100]} tick={{ fill: c.muted, fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}%`} width={44} />
@@ -53,9 +68,11 @@ export default function Curve() {
                 <Tooltip contentStyle={{ background: c.panel, border: `1px solid ${c.line}`, borderRadius: 8, fontSize: 12, color: c.fg }}
                   formatter={(v: number, n) => [`${v.toFixed(1)}%`, n]} labelFormatter={(l) => `Negotiation ${l}`} />
                 <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-                <Line name="Memory ON" dataKey="on" stroke={c.accent} strokeWidth={2.5} dot={{ r: 3, fill: c.accent }} activeDot={{ r: 5 }} />
+                <Area dataKey="off" stackId="gap" stroke="none" fill="transparent" fillOpacity={0} tooltipType="none" legendType="none" activeDot={false} isAnimationActive={false} />
+                <Area dataKey="gap" stackId="gap" stroke="none" fill={c.mem} fillOpacity={0.12} tooltipType="none" legendType="none" activeDot={false} isAnimationActive={false} />
+                <Line name="Memory ON" dataKey="on" stroke={c.mem} strokeWidth={2.5} dot={{ r: 3, fill: c.mem }} activeDot={{ r: 5 }} />
                 <Line name="Memory OFF" dataKey="off" stroke={c.faint} strokeWidth={2} strokeDasharray="5 4" dot={{ r: 2.5, fill: c.faint }} />
-              </LineChart>
+              </ComposedChart>
             </ResponsiveContainer>
           )}
         </div>

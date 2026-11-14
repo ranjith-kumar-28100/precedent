@@ -1,4 +1,4 @@
-import { ArrowUp, CircleOff, Eraser, Sparkles } from 'lucide-react'
+import { ArrowUp, Check, CircleOff, Eraser, Loader2, Sparkles } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -27,9 +27,36 @@ function Answer({ resp, onCite }: { resp: ChatResp; onCite: (id: string) => void
     <div className="md">
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
         a: ({ href, children }) => href?.startsWith('#cite-')
-          ? <CiteChip id={href.slice(6)} onClick={onCite} />
+          ? <CiteChip id={href.slice(6)} onClick={onCite} cite={resp.citations.find((c) => c.id === href.slice(6))} />
           : <a href={href} target="_blank" rel="noreferrer">{children}</a>,
       }}>{md}</ReactMarkdown>
+    </div>
+  )
+}
+
+// The agent's usual order of work, advanced on a timer while the request is in flight. Not live events:
+// the real tool calls are shown under "Tools used" once the answer arrives.
+const STEPS = ['Recalling memories from Hindsight', 'Counting outcomes in the structured metadata', 'Writing the answer and citing sources']
+
+function Waiting({ memory }: { memory: boolean }) {
+  const [step, setStep] = useState(0)
+  useEffect(() => {
+    if (!memory) return
+    const t = setInterval(() => setStep((n) => Math.min(n + 1, STEPS.length - 1)), 1500)
+    return () => clearInterval(t)
+  }, [memory])
+  if (!memory) return <p role="status" className="text-xs text-faint">Thinking without memory…</p>
+  return (
+    <div role="status">
+      <span className="sr-only">{STEPS[step]}…</span>
+      <ol aria-hidden className="space-y-1">
+        {STEPS.slice(0, step + 1).map((label, i) => (
+          <li key={label} className={cx('rise flex items-center gap-2 text-xs', i < step ? 'text-faint' : 'text-mem')}>
+            {i < step ? <Check size={12} className="shrink-0" /> : <Loader2 size={12} className="shrink-0 animate-spin motion-reduce:animate-none" />}
+            {label}{i === step && '…'}
+          </li>
+        ))}
+      </ol>
     </div>
   )
 }
@@ -61,11 +88,15 @@ export default function Chat() {
     } finally { setBusy(false) }
   }
 
+  // Empty state: hero, input and suggestions sit together in the middle. After the first message the
+  // input sticks to the bottom. The form stays the same child of the same parent so focus is kept.
+  const empty = !msgs.length && !busy
+
   return (
     <div className="mx-auto flex min-h-[calc(100vh-8rem)] max-w-3xl flex-col">
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <Segmented label="Memory" value={mem} onChange={setMem} options={[
-          { value: 'on', label: <span className="flex items-center gap-1"><Sparkles size={12} className={mem === 'on' ? 'text-accent' : ''} />Memory ON</span> },
+          { value: 'on', label: <span className="flex items-center gap-1"><Sparkles size={12} className={mem === 'on' ? 'text-mem' : ''} />Memory ON</span> },
           { value: 'off', label: <span className="flex items-center gap-1"><CircleOff size={12} />Memory OFF</span> }]} />
         <select aria-label="Scope" className={cx(inputCls, '!h-8 !w-52 text-xs')} value={scope} onChange={(e) => setScope(e.target.value)}>
           <option value="">All vendors</option>
@@ -75,23 +106,14 @@ export default function Chat() {
         <Button size="sm" variant="ghost" disabled={!msgs.length || busy} onClick={() => { setMsgs([]); setErr(null) }}><Eraser size={13} />Clear</Button>
       </div>
 
-      <div className="flex-1 space-y-5">
-        {!msgs.length && (
-          <div className="flex flex-col items-center px-2 pt-8 text-center">
+      <div className={empty ? 'mt-auto space-y-5' : 'flex-1 space-y-5'}>
+        {empty && (
+          <div className="rise flex flex-col items-center px-2 text-center">
             <LogoMark size={36} />
             <h2 className="mt-3 text-lg font-semibold tracking-tight">Ask the negotiation memory</h2>
             <p className="mt-1 max-w-md text-[13px] text-muted">
               Answers come from Hindsight recall across every vendor, with exact counts from the structured outcome metadata. Every claim cites its memory.
             </p>
-            <div className="mt-6 grid w-full gap-2 sm:grid-cols-2">
-              {suggs.loading
-                ? [0, 1, 2, 3].map((i) => (
-                  <div key={i} aria-hidden className="space-y-2 rounded-xl border border-line bg-panel px-3.5 py-3"><Skeleton className="h-3 w-5/6" /><Skeleton className="h-3 w-1/2" /></div>
-                ))
-                : (suggs.data?.questions ?? SUGGS).map((s) => (
-                  <button key={s} onClick={() => send(s)} className="rounded-xl border border-line bg-panel px-3.5 py-3 text-left text-[13px] hover:border-accent/40 hover:bg-accent-soft/40">{s}</button>
-                ))}
-            </div>
           </div>
         )}
         {msgs.map((m, i) => m.role === 'user' ? (
@@ -103,8 +125,8 @@ export default function Chat() {
             <div className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-line bg-panel"><LogoMark size={18} /></div>
             <div className="min-w-0 flex-1 space-y-2.5">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge tone={m.resp!.use_memory ? 'accent' : 'neutral'}>{m.resp!.use_memory ? 'Memory ON' : 'Memory OFF'}</Badge>
-                {m.resp!.citations.length > 0 && <button onClick={() => setDrawer({ resp: m.resp!, id: m.resp!.citations[0].id })} className="num text-xs font-medium text-accent hover:underline">{m.resp!.citations.length} sources</button>}
+                <Badge tone={m.resp!.use_memory ? 'mem' : 'neutral'}>{m.resp!.use_memory ? 'Memory ON' : 'Memory OFF'}</Badge>
+                {m.resp!.citations.length > 0 && <button onClick={() => setDrawer({ resp: m.resp!, id: m.resp!.citations[0].id })} className="num text-xs font-medium text-mem hover:underline">{m.resp!.citations.length} sources</button>}
                 <span className="num font-mono text-2xs text-faint">{ms(m.resp!.latency_ms)}</span>
               </div>
               <Answer resp={m.resp!} onCite={(id) => setDrawer({ resp: m.resp!, id })} />
@@ -115,14 +137,14 @@ export default function Chat() {
         {busy && (
           <div className="flex gap-3">
             <div className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-line bg-panel"><LogoMark size={18} /></div>
-            <div className="flex-1 space-y-2 pt-1"><Skeleton className="h-3.5 w-3/4" /><Skeleton className="h-3.5 w-1/2" /><p className="text-xs text-faint">{mem === 'on' ? 'Searching memory…' : 'Thinking without memory…'}</p></div>
+            <div className="flex-1 space-y-2 pt-1"><Skeleton className="h-3.5 w-3/4" /><Skeleton className="h-3.5 w-1/2" /><Waiting memory={mem === 'on'} /></div>
           </div>
         )}
         {err && <ErrorBanner error={err} onRetry={() => send()} />}
         <div ref={end} />
       </div>
 
-      <form className="sticky bottom-0 mt-5 bg-gradient-to-t from-bg via-bg to-transparent pb-2 pt-4" onSubmit={(e) => { e.preventDefault(); send() }}>
+      <form className={empty ? 'mt-1' : 'sticky bottom-0 mt-5 bg-gradient-to-t from-bg via-bg to-transparent pb-2 pt-4'} onSubmit={(e) => { e.preventDefault(); send() }}>
         <div className="flex items-end gap-2 rounded-2xl border border-line bg-panel p-2 shadow-card focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/15">
           <textarea rows={1} value={text} onChange={(e) => setText(e.target.value)} aria-label="Message"
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
@@ -132,6 +154,17 @@ export default function Chat() {
         </div>
         <p className="mt-1.5 text-center text-2xs text-faint"><Kbd>Enter</Kbd> to send · <Kbd>Shift</Kbd>+<Kbd>Enter</Kbd> new line</p>
       </form>
+      {empty && (
+        <div className="mb-auto mt-4 grid w-full gap-2 pb-6 sm:grid-cols-2">
+          {suggs.loading
+            ? [0, 1, 2, 3].map((i) => (
+              <div key={i} aria-hidden className="space-y-2 rounded-xl border border-line bg-panel px-3.5 py-3"><Skeleton className="h-3 w-5/6" /><Skeleton className="h-3 w-1/2" /></div>
+            ))
+            : (suggs.data?.questions ?? SUGGS).map((s) => (
+              <button key={s} onClick={() => send(s)} className="rounded-xl border border-line bg-panel px-3.5 py-3 text-left text-[13px] hover:border-accent/40 hover:bg-accent-soft/40">{s}</button>
+            ))}
+        </div>
+      )}
 
       {drawer && <EvidenceDrawer open onClose={() => setDrawer(null)} citations={drawer.resp.citations} active={drawer.id} title="Chat answer" vendorName={vendorName} />}
     </div>

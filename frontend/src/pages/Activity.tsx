@@ -1,9 +1,9 @@
 import { BookMarked, Brain, Database, RefreshCw, Search } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Badge, Button, Card, Empty, ErrorBanner, Segmented, SkeletonLines, cx } from '../components/ui'
+import { Badge, Button, Card, CountUp, Empty, ErrorBanner, Segmented, SkeletonLines, cx } from '../components/ui'
 import { fmtTime, ms, timeAgo } from '../lib/format'
 import { useApi, useAppData } from '../lib/hooks'
-import type { Ledger, OpCounts } from '../lib/types'
+import type { Ledger, LedgerOp, OpCounts } from '../lib/types'
 
 const KINDS: { k: keyof OpCounts; label: string; icon: typeof Search; desc: string }[] = [
   { k: 'retain', label: 'Retain', icon: Database, desc: 'Episodes written, facts extracted' },
@@ -14,6 +14,15 @@ const KINDS: { k: keyof OpCounts; label: string; icon: typeof Search; desc: stri
 const kindOf = (op: string): keyof OpCounts =>
   op === 'retain' || op === 'recall' || op === 'reflect' ? op : op.includes('mental_model') ? 'mental_model' : 'other'
 
+// Violet = operations that write to or reason over memory; blue = recall (the fast read path); red = failed.
+const kindTone = (o: LedgerOp) => {
+  if (!o.ok) return { dot: 'bg-bad', text: 'text-bad', bar: 'bg-bad' }
+  const k = kindOf(o.op)
+  if (k === 'recall') return { dot: 'bg-accent', text: 'text-accent', bar: 'bg-accent' }
+  if (k === 'other') return { dot: 'bg-faint', text: 'text-fg', bar: 'bg-faint' }
+  return { dot: 'bg-mem', text: 'text-mem', bar: 'bg-mem' }
+}
+
 export default function Activity() {
   const { vendorName } = useAppData()
   const led = useApi<Ledger>('/ledger?limit=100')
@@ -23,6 +32,9 @@ export default function Activity() {
     return () => clearInterval(t)
   }, [led.reload])
   const ops = useMemo(() => (led.data?.ops ?? []).filter((o) => filter === 'all' || kindOf(o.op) === filter), [led.data, filter])
+  // Log scale: recall is tens of ms, reflect is seconds, so a linear bar would flatten everything but the slowest.
+  const maxLog = useMemo(() => Math.log10(Math.max(1, ...ops.map((o) => o.ms)) + 1), [ops])
+  const barPct = (n: number) => Math.min(100, Math.max(4, maxLog > 0 ? (Math.log10(Math.max(0, n) + 1) / maxLog) * 100 : 4))
   const failed = led.data?.ops.filter((o) => !o.ok).length ?? 0
   const avg = (k: keyof OpCounts) => {
     const xs = (led.data?.ops ?? []).filter((o) => kindOf(o.op) === k && o.ok)
@@ -35,10 +47,10 @@ export default function Activity() {
         {KINDS.map(({ k, label, icon: I, desc }) => (
           <Card key={k} className="!p-4">
             <div className="flex items-center justify-between">
-              <span className="flex items-center gap-2 text-[13px] font-medium"><I size={14} className="text-accent" />{label}</span>
+              <span className="flex items-center gap-2 text-[13px] font-medium"><I size={14} className="text-mem" />{label}</span>
               {avg(k) !== null && <span className="num font-mono text-2xs text-faint">avg {ms(avg(k)!)}</span>}
             </div>
-            <div className="num mt-2 text-2xl font-semibold tracking-tight">{led.data ? led.data.counts[k] : '–'}</div>
+            <div className="num mt-2 text-2xl font-semibold tracking-tight">{led.data ? <CountUp value={led.data.counts[k]} /> : '–'}</div>
             <div className="text-xs text-muted">{desc}</div>
           </Card>
         ))}
@@ -71,19 +83,30 @@ export default function Activity() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
-                {ops.map((o, i) => (
+                {ops.map((o, i) => { const tone = kindTone(o); return (
                   <tr key={i} className="hover:bg-subtle/50">
                     <td className="num whitespace-nowrap px-4 py-2 font-mono text-xs text-muted" title={timeAgo(o.t)}>{fmtTime(o.t)}</td>
-                    <td className="px-2 py-2"><span className="font-mono text-xs font-medium">{o.op}</span></td>
+                    <td className="whitespace-nowrap px-2 py-2">
+                      <span className="inline-flex items-center gap-1.5 font-mono text-xs font-medium">
+                        <span aria-hidden className={cx('h-1.5 w-1.5 shrink-0 rounded-full', tone.dot)} /><span className={tone.text}>{o.op}</span>
+                      </span>
+                    </td>
                     <td className="max-w-[160px] truncate px-2 py-2 text-xs text-muted">{o.vendor_id ? vendorName(o.vendor_id) : 'bank-wide'}</td>
                     <td className="max-w-[340px] px-2 py-2 text-xs text-muted">
                       <div className="truncate" title={o.detail}>{o.detail}</div>
                       {o.error && <div className="truncate text-bad" title={o.error}>{o.error}</div>}
                     </td>
-                    <td className="num whitespace-nowrap px-2 py-2 text-right font-mono text-xs">{ms(o.ms)}</td>
+                    <td className="num whitespace-nowrap px-2 py-2 text-right font-mono text-xs">
+                      <span className="inline-flex items-center justify-end gap-2">
+                        <span aria-hidden className="hidden h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-subtle sm:block">
+                          <span className={cx('block h-full rounded-full', tone.bar)} style={{ width: `${barPct(o.ms)}%` }} />
+                        </span>
+                        <span className="min-w-[3.25rem]">{ms(o.ms)}</span>
+                      </span>
+                    </td>
                     <td className="px-4 py-2 text-right"><Badge tone={o.ok ? 'ok' : 'bad'} dot>{o.ok ? 'ok' : 'failed'}</Badge></td>
                   </tr>
-                ))}
+                ) })}
               </tbody>
             </table>
           </div>

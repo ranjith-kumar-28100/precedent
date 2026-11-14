@@ -9,6 +9,7 @@ export default {
         bg: v('bg'), panel: v('panel'), subtle: v('subtle'), line: v('line'), line2: v('line2'),
         fg: v('fg'), muted: v('muted'), faint: v('faint'),
         accent: v('accent'), 'accent-fg': v('accent-fg'), 'accent-soft': v('accent-soft'),
+        mem: v('mem'), 'mem-soft': v('mem-soft'),
         ok: v('ok'), warn: v('warn'), bad: v('bad'),
       },
       fontFamily: {
