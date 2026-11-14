@@ -1,5 +1,6 @@
 """Thin wrapper over the Hindsight client: one bank, memories tagged per vendor."""
 import json
+import re
 import threading
 import time
 from collections import deque
@@ -210,6 +211,17 @@ def retain_profile(bank_id: str, vendor: dict, notes: str, date: str) -> None:
     client().retain(bank_id=bank_id, content=text, timestamp=date, context="Vendor profile recorded by the buyer",
                     tags=[vtag(vendor["id"]), f"category:{vendor['category']}"], document_id=f"profile-{vendor['id']}",
                     metadata={"kind": "profile", "date": date})
+
+
+def retain_verified_fact(bank_id: str, vendor: dict, claim: str, answer: str, source: str, date: str) -> None:
+    """A claim the vendor confirmed (e.g. by email). Dated, tagged category:verified, and keyed by vendor, date and
+    claim, so saving the same confirmation twice updates one memory instead of adding two."""
+    slug = re.sub(r"[^a-z0-9]+", "-", claim.lower()).strip("-")[:48] or "claim"
+    client().retain(bank_id=bank_id, content=f"{date}: {vendor['name']} confirmed {claim}: {answer} (source: {source})",
+                    timestamp=date, context="Fact confirmed by the vendor",
+                    tags=[vtag(vendor["id"]), "category:verified"],
+                    document_id=f"verified-{vendor['id']}-{date}-{slug}",
+                    metadata={"kind": "verified", "date": date, "source": source})
 
 
 def recall_vendor(bank_id: str, vendor_id: str, query: str, limit: int = 12) -> list[dict]:

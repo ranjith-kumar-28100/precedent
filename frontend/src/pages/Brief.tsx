@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AddVendorPanel } from '../components/AddVendor'
 import { Cited, EvidenceDrawer } from '../components/Evidence'
 import { Trace } from '../components/Trace'
+import { VerifyCard } from '../components/Verify'
 import { Badge, Button, Card, CardHeader, Empty, ErrorBanner, Field, Meter, SkeletonLines, cx, inputCls } from '../components/ui'
 import { api } from '../lib/api'
 import { fmtDate, ms, tacticLabel, usd } from '../lib/format'
@@ -138,8 +139,8 @@ export default function BriefPage() {
           sub="Same model, same prompt, same tools. The only difference: one run can read Hindsight memory of past negotiations with this vendor." />
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
-          <BriefCol mode="off" run={off} onCite={() => {}} />
-          <BriefCol mode="on" run={on} onCite={(id) => setDrawer(id)} />
+          <BriefCol mode="off" run={off} onCite={() => {}} onRerun={() => run('off')} />
+          <BriefCol mode="on" run={on} onCite={(id) => setDrawer(id)} onRerun={() => run('on')} />
         </div>
       )}
 
@@ -174,7 +175,7 @@ function DeltaStrip({ on, off }: { on: BriefResp; off: BriefResp }) {
   )
 }
 
-function BriefCol({ mode, run, onCite }: { mode: 'on' | 'off'; run: Run; onCite: (id: string) => void }) {
+function BriefCol({ mode, run, onCite, onRerun }: { mode: 'on' | 'off'; run: Run; onCite: (id: string) => void; onRerun: () => void }) {
   const isOn = mode === 'on'
   const b = run.data?.brief
   const top = b ? Math.max(...b.tactics.map((t) => t.confidence), 0) : 0
@@ -218,6 +219,10 @@ function BriefCol({ mode, run, onCite }: { mode: 'on' | 'off'; run: Run; onCite:
             <div className={cx('mt-1 text-[13px] font-medium', !isOn && 'text-muted')}><Cited text={b.decision_maker} onCite={onCite} /></div>
             <div className="mt-1 text-xs leading-5 text-muted"><Cited text={b.vendor_profile} onCite={onCite} /></div>
           </div>
+
+          {!!b.needs_verification?.length && (
+            <VerifyCard key={b.needs_verification.map((v) => v.claim).join('|')} vendorId={run.data.vendor_id} items={b.needs_verification} onRerun={onRerun} />
+          )}
 
           <div>
             <div className="mb-2 text-2xs font-medium uppercase tracking-wider text-faint">Tactics, ranked</div>

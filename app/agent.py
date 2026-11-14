@@ -4,8 +4,10 @@ The model decides what to look up (recall, playbook, reflect, market data) and w
 evidence to submit a brief. Memory ON/OFF changes only which tools exist, so the comparison is fair:
 the baseline agent has the same model, prompt and loop but no memory tools."""
 import json
+import re
 import time
 from dataclasses import dataclass, field
+from datetime import date
 from functools import lru_cache
 from typing import Callable
 
@@ -13,6 +15,7 @@ from . import config, llm, memory
 from .sim import TACTICS
 
 MAX_STEPS = 7
+STALE_DAYS = 90  # evidence older than this must be re-confirmed before we rely on it
 
 
 @lru_cache(maxsize=1)
@@ -91,10 +94,14 @@ def t_submit(run: Run, **args) -> str:
         while c > 1:
             c /= 10 if c <= 10 else 100
         t["confidence"] = round(max(0.0, c), 2)
+    checks = [{"claim": str(v.get("claim", "")), "reason": str(v.get("reason", "")),
+               "last_evidence_date": (str(v["last_evidence_date"]) if v.get("last_evidence_date") else None),
+               "ask": str(v.get("ask", ""))}
+              for v in args.get("needs_verification") or [] if isinstance(v, dict) and v.get("claim")][:5]
     run.brief = {"summary": str(args.get("summary", "")), "vendor_profile": str(args.get("vendor_profile", "unknown")),
                  "decision_maker": str(args.get("decision_maker", "unknown")),
                  "recommended_opening_ask_pct": ask, "tactics": tactics,
-                 "watch_outs": [str(w) for w in args.get("watch_outs", [])][:4]}
+                 "watch_outs": [str(w) for w in args.get("watch_outs", [])][:4], "needs_verification": checks}
     return "Brief accepted."
 
 
@@ -126,7 +133,13 @@ BASE_TOOLS: dict[str, tuple[dict, Callable]] = {
         "tactics": {"type": "array", "items": {"type": "object", "properties": {
             "tactic": {"type": "string", "enum": TACTICS}, "why": {"type": "string"},
             "confidence": {"type": "number"}}, "required": ["tactic", "why", "confidence"]}},
-        "watch_outs": {"type": "array", "items": {"type": "string"}}},
+        "watch_outs": {"type": "array", "items": {"type": "string"}},
+        "needs_verification": {"type": "array", "description": "Claims to confirm with the vendor before relying on them.",
+                               "items": {"type": "object", "properties": {
+                                   "claim": {"type": "string"}, "reason": {"type": "string"},
+                                   "last_evidence_date": {"type": "string", "description": "YYYY-MM-DD of the newest cited evidence, if any"},
+                                   "ask": {"type": "string", "description": "The exact question to ask the vendor"}},
+                                   "required": ["claim", "reason", "ask"]}}},
         ["summary", "vendor_profile", "decision_maker", "recommended_opening_ask_pct", "tactics"]), t_submit),
 }
 
@@ -138,7 +151,44 @@ SYSTEM = ("You are Precedent, a senior procurement negotiator advising the buyer
           "it first; a tactic that got a small discount or made the vendor harden has FAILED, so do not rank it first "
           "again; if no tactic has proven itself yet, rank first an untried tactic that fits the vendor's behaviour and "
           "say it is an experiment. Opening ask: if a tactic is PROVEN, open about 10%% above the best discount it has achieved; otherwise open at 18%% off list. Never under-ask: a low ask makes a good tactic look like it failed and poisons what we learn. "
-          "Use reflect_on_vendor at most once, only if recall and the playbook leave a real gap. Be efficient: at most %d tool rounds." % (MAX_STEPS - 1))
+          "VERIFY BEFORE YOU TRUST: cite ids in decision_maker too. For the decision maker and any claim a tactic depends on: "
+          "if it has no citation, its newest cited evidence is older than %d days, or cited memories disagree, do NOT state it "
+          "as fact. Add a needs_verification item explaining why, the date of the newest evidence, and the exact question to ask "
+          "the vendor. "
+          "Use reflect_on_vendor at most once, only if recall and the playbook leave a real gap. Be efficient: at most %d tool rounds." % (STALE_DAYS, MAX_STEPS - 1))
+
+
+def _iso_day(v) -> str | None:
+    try:
+        return date.fromisoformat(str(v)[:10]).isoformat() if v else None
+    except ValueError:
+        return None
+
+
+def verification_net(run: Run, today: date | None = None) -> None:
+    """Deterministic safety net: never present the decision maker as fact unless a recent memory backs it,
+    whatever the model did. Flags it when it cites nothing, or its newest cited evidence is over STALE_DAYS old."""
+    b = run.brief
+    checks = b.setdefault("needs_verification", [])
+    dm = b.get("decision_maker") or "unknown"
+    if any(re.search(r"decision|approv|sign", c["claim"], re.I) for c in checks):
+        return  # the model already flagged it
+    today = today or date.today()
+    ids = set(re.findall(r"\[(m\d+)\]", dm))
+    dates = sorted(d for c in run.citations if c["id"] in ids and (d := _iso_day(c.get("date"))))
+    newest = dates[-1] if dates else None
+    if not ids:
+        reason = "No cited memory supports who decides."
+    elif not newest:
+        reason = "The cited memories are undated, so we can't tell if this is still true."
+    elif (today - date.fromisoformat(newest)).days > STALE_DAYS:
+        reason = f"Newest evidence is from {newest}, more than {STALE_DAYS} days ago; people and policies change."
+    else:
+        return
+    who = re.sub(r"\s*\[m\d+\]", "", dm).strip()
+    checks.append({"claim": f"Decision maker: {who}", "reason": reason,
+                   "last_evidence_date": newest,
+                   "ask": f"Who at {run.vendor.get('name', 'your company')} approves a discount of this size today?"})
 
 
 def make_brief(bank_id: str, vendor: dict, objective: str, context: str = "", use_memory: bool = True) -> dict:
@@ -177,5 +227,6 @@ def make_brief(bank_id: str, vendor: dict, objective: str, context: str = "", us
         run.brief = {"summary": "Agent did not produce a brief.", "vendor_profile": "unknown", "decision_maker": "unknown",
                      "recommended_opening_ask_pct": 10.0, "watch_outs": [],
                      "tactics": [{"tactic": "competing_quote", "why": "Fallback default.", "confidence": 0.1}]}
+    verification_net(run)
     return {"vendor_id": vendor["id"], "use_memory": use_memory, "brief": run.brief, "citations": run.citations,
             "trace": run.trace, "latency_ms": int((time.time() - t0) * 1000)}
