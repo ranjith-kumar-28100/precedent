@@ -3638,7 +3638,9 @@ dependencies = [
     { name = "hindsight-client" },
     { name = "httpx" },
     { name = "pydantic" },
+    { name = "pyjwt" },
     { name = "python-dotenv" },
+    { name = "python-multipart" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -3655,7 +3657,9 @@ requires-dist = [
     { name = "hindsight-client", specifier = ">=1.2.0" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "pydantic", specifier = ">=2.14.3" },
+    { name = "pyjwt", specifier = ">=2.10" },
     { name = "python-dotenv", specifier = ">=1.2.4" },
+    { name = "python-multipart", specifier = ">=0.0.20" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },
 ]
 

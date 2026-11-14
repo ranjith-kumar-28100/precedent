@@ -180,6 +180,34 @@ Two separate models, both Azure OpenAI deployments (v1 endpoint), set in `.env`:
 
 `run_hindsight.sh` loads `.env` into the server's environment. Keep `.env` out of version control.
 
+## Sign-in (optional)
+
+Off by default, so local runs and tests need nothing. To require sign-in, for example for a shared demo:
+
+```bash
+uv run python scripts/create_user.py ranjith --name "Ranjith Kumar G"   # prompts for a password (10+ characters)
+echo "AUTH_ENABLED=1" >> .env                                           # then restart ./run_api.sh
+```
+
+How it's secured (`app/auth.py`):
+- **Users** live in SQLite (`data/precedent.db`, git-ignored). Passwords are hashed with **scrypt** and a random salt per user, and compared in constant time. There are no default accounts.
+- **Sessions** are random 256-bit tokens in an **HttpOnly, SameSite=Strict** cookie, so page scripts can't read them and other sites can't send them. Only a SHA-256 hash of the token is stored, so a copied database can't be used to sign in. Sessions expire after 8 hours (`SESSION_HOURS`), and **Sign out** deletes them on the server. Set `COOKIE_SECURE=1` when serving over HTTPS.
+- **Brute force:** after 5 failed attempts for a username from one IP, that pair is locked out for 15 minutes. An unknown user and a wrong password get the same message and take the same time.
+- **Every `/api` route** except sign-in returns 401 without a valid session. The UI goes back to the sign-in page when a session lapses. Responses carry `nosniff`, `DENY` framing and `same-origin` referrer headers.
+- **OAuth2 + JWT for API clients** (scripts, Postman, the Swagger "Authorize" button at `/docs`): `POST /api/auth/token` with form fields `username` and `password` returns `{access_token, token_type: "bearer", expires_in}`. Send it as `Authorization: Bearer <token>`.
+  - The token is an HS256 JWT signed with `JWT_SECRET` (32+ characters), valid for `JWT_MINUTES` (30 by default).
+  - The server pins the algorithm and checks issuer, audience, expiry and not-before, so unsigned or algorithm-swapped tokens are rejected.
+  - Each token has a unique `jti`. Signing out with the token revokes it, and deleting a user invalidates their tokens.
+  - The token endpoint shares the sign-in lockout.
+  - The browser still uses the HttpOnly cookie, because a token held by page scripts is easier to steal.
+
+  ```bash
+  TOKEN=$(curl -s -d "username=ranjith&password=..." localhost:8000/api/auth/token | jq -r .access_token)
+  curl -H "Authorization: Bearer $TOKEN" localhost:8000/api/vendors
+  ```
+- **Service access:** the Band agents can send `Authorization: Bearer <API_SERVICE_TOKEN>` (set `PRECEDENT_API_TOKEN` on the Band side). This is unavailable unless the token is set.
+- Logged outcomes record who was signed in as the buyer.
+
 ## Team
 
 **The R&N Protocol**
@@ -195,5 +223,5 @@ Two separate models, both Azure OpenAI deployments (v1 endpoint), set in `.env`:
 - The agent LLM is non-deterministic; single eval runs are noisy.
 - Outcomes are entered by hand or via Band; there is no ingestion yet.
 - Chat answers depend on what is retained; a search can miss a memory, so non-exhaustive answers are labelled as such. You can add vendors from the UI, but you can't yet remove a vendor or edit memories.
-- No authentication. The API has open CORS and is meant for local use.
+- Sign-in is a simple username and password (SQLite with scrypt), off by default. There's no single sign-on or per-user roles yet, CORS is open, and the app is meant for local use. Microsoft Entra ID sign-in and one memory bank per team are on the roadmap.
 - Roadmap: ingest real history from email, CRM and contract repositories; ERP and spend-data integrations; one bank per tenant for multi-team use; use Hindsight's memory-defense feature to keep personal data (contact names, emails) out of long-term memory where it is not needed.

@@ -26,6 +26,8 @@ export async function api<T>(path: string, body?: unknown): Promise<T> {
   if (!res.ok) {
     let detail = res.statusText
     try { detail = detailText((await res.json()).detail) ?? detail } catch { /* not JSON */ }
+    // a lapsed or revoked session anywhere in the app sends the user back to the sign-in page
+    if (res.status === 401 && !path.startsWith('/auth/')) dispatchEvent(new Event('precedent:signed-out'))
     throw new ApiError(`${res.status} on ${path}: ${detail}`, res.status, detail)
   }
   return res.json() as Promise<T>

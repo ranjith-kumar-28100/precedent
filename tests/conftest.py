@@ -69,13 +69,17 @@ def offline(monkeypatch):
     fake = FakeHindsight()
     monkeypatch.setattr(memory, "client", lambda: fake)
     monkeypatch.setitem(llm.SPEND, "usd", 0.0)
+    for var in ("AUTH_ENABLED", "API_SERVICE_TOKEN", "JWT_SECRET", "JWT_MINUTES", "COOKIE_SECURE"):
+        monkeypatch.delenv(var, raising=False)  # tests never depend on the developer's local .env
     return fake
 
 
 @pytest.fixture
 def api(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
-    from app import main
+    from app import auth, main
+    monkeypatch.setattr(auth, "db_path", lambda: tmp_path / "precedent.db")
+    monkeypatch.setattr(auth, "_FAILS", {})
     # never write to the real data files from a test
     monkeypatch.setattr(main, "CUSTOM_VENDORS", tmp_path / "custom_vendors.json")
     monkeypatch.setattr(main, "LOGGED_OUTCOMES", tmp_path / "logged_outcomes.json")
