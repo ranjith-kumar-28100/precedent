@@ -14,3 +14,5 @@ data/custom_vendors.json
 data/custom_vendors.json.tmp
 data/logged_outcomes.json
 data/logged_outcomes.json.tmp
+data/suggestions_cache.json
+data/suggestions_cache.json.tmp

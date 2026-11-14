@@ -79,5 +79,7 @@ def api(monkeypatch, tmp_path):
     # never write to the real data files from a test
     monkeypatch.setattr(main, "CUSTOM_VENDORS", tmp_path / "custom_vendors.json")
     monkeypatch.setattr(main, "LOGGED_OUTCOMES", tmp_path / "logged_outcomes.json")
+    monkeypatch.setattr(main, "SUGGESTIONS_CACHE", tmp_path / "suggestions_cache.json")
+    monkeypatch.setattr(main, "SUGGESTIONS", {})
     monkeypatch.setattr(main, "HISTORY", list(main.HISTORY))
     return TestClient(main.app)

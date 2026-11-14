@@ -8,9 +8,10 @@ import { Trace } from '../components/Trace'
 import { Badge, Button, ErrorBanner, Kbd, Segmented, Skeleton, cx, inputCls } from '../components/ui'
 import { api } from '../lib/api'
 import { ms } from '../lib/format'
-import { useAppData } from '../lib/hooks'
-import type { ChatResp } from '../lib/types'
+import { useApi, useAppData } from '../lib/hooks'
+import type { ChatResp, Suggestions } from '../lib/types'
 
+// Shown if the suggestions endpoint is unreachable.
 const SUGGS = [
   'Which tactic has backfired most often, and with whom?',
   'Which vendors changed owner or contact recently?',
@@ -42,6 +43,7 @@ export default function Chat() {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [drawer, setDrawer] = useState<{ resp: ChatResp; id: string } | null>(null)
+  const suggs = useApi<Suggestions>(`/chat/suggestions${scope ? `?vendor_id=${encodeURIComponent(scope)}` : ''}`)
   const end = useRef<HTMLDivElement>(null)
   useEffect(() => { end.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }) }, [msgs, busy])
 
@@ -82,9 +84,13 @@ export default function Chat() {
               Answers come from Hindsight recall across every vendor, with exact counts from the structured outcome metadata. Every claim cites its memory.
             </p>
             <div className="mt-6 grid w-full gap-2 sm:grid-cols-2">
-              {SUGGS.map((s) => (
-                <button key={s} onClick={() => send(s)} className="rounded-xl border border-line bg-panel px-3.5 py-3 text-left text-[13px] hover:border-accent/40 hover:bg-accent-soft/40">{s}</button>
-              ))}
+              {suggs.loading
+                ? [0, 1, 2, 3].map((i) => (
+                  <div key={i} aria-hidden className="space-y-2 rounded-xl border border-line bg-panel px-3.5 py-3"><Skeleton className="h-3 w-5/6" /><Skeleton className="h-3 w-1/2" /></div>
+                ))
+                : (suggs.data?.questions ?? SUGGS).map((s) => (
+                  <button key={s} onClick={() => send(s)} className="rounded-xl border border-line bg-panel px-3.5 py-3 text-left text-[13px] hover:border-accent/40 hover:bg-accent-soft/40">{s}</button>
+                ))}
             </div>
           </div>
         )}
