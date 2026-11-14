@@ -1,14 +1,15 @@
 import { AlertTriangle, Inbox } from 'lucide-react'
-import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ')
 
-type Tone = 'neutral' | 'accent' | 'ok' | 'warn' | 'bad'
+type Tone = 'neutral' | 'accent' | 'mem' | 'ok' | 'warn' | 'bad'
 const TONE: Record<Tone, string> = {
   neutral: 'bg-subtle text-muted border-line',
   accent: 'bg-accent-soft text-accent border-accent/25',
+  mem: 'bg-mem-soft text-mem border-mem/25',
   ok: 'bg-ok/10 text-ok border-ok/25',
   warn: 'bg-warn/10 text-warn border-warn/25',
   bad: 'bg-bad/10 text-bad border-bad/25',
@@ -33,7 +34,7 @@ export function CardHeader({ title, sub, right, icon }: { title: ReactNode; sub?
   return (
     <div className="mb-3 flex items-start justify-between gap-3">
       <div className="min-w-0">
-        <h3 className="flex items-center gap-2 text-[13.5px] font-semibold text-fg">{icon}{title}</h3>
+        <h3 className="flex items-center gap-2 text-[14.5px] font-semibold tracking-tight text-fg">{icon}{title}</h3>
         {sub && <p className="mt-0.5 text-xs text-muted">{sub}</p>}
       </div>
       {right && <div className="flex shrink-0 items-center gap-2">{right}</div>}
@@ -106,20 +107,20 @@ export function ErrorBanner({ error, onRetry }: { error: string; onRetry?: () =>
   )
 }
 
-export function Stat({ label, value, sub, tone }: { label: string; value: ReactNode; sub?: ReactNode; tone?: 'accent' | 'muted' }) {
+export function Stat({ label, value, sub, tone }: { label: string; value: ReactNode; sub?: ReactNode; tone?: 'accent' | 'mem' | 'muted' }) {
   return (
     <div className="min-w-0">
       <div className="text-2xs font-medium uppercase tracking-wider text-faint">{label}</div>
-      <div className={cx('num mt-1 text-xl font-semibold tracking-tight', tone === 'accent' ? 'text-accent' : tone === 'muted' ? 'text-muted' : 'text-fg')}>{value}</div>
+      <div className={cx('num mt-1 text-2xl font-semibold tracking-tight', tone === 'accent' ? 'text-accent' : tone === 'mem' ? 'text-mem' : tone === 'muted' ? 'text-muted' : 'text-fg')}>{value}</div>
       {sub && <div className="mt-0.5 text-xs text-muted">{sub}</div>}
     </div>
   )
 }
 
-export function Meter({ value, tone = 'accent' }: { value: number; tone?: 'accent' | 'muted' }) {
+export function Meter({ value, tone = 'accent' }: { value: number; tone?: 'accent' | 'mem' | 'muted' }) {
   return (
     <div className="h-1.5 w-full overflow-hidden rounded-full bg-subtle" role="meter" aria-valuenow={Math.round(value * 100)} aria-valuemin={0} aria-valuemax={100}>
-      <div className={cx('h-full rounded-full', tone === 'accent' ? 'bg-accent' : 'bg-faint')} style={{ width: `${Math.max(2, value * 100)}%` }} />
+      <div className={cx('h-full rounded-full transition-[width] duration-700 ease-out', tone === 'accent' ? 'bg-accent' : tone === 'mem' ? 'bg-mem' : 'bg-faint')} style={{ width: `${Math.max(2, value * 100)}%` }} />
     </div>
   )
 }
@@ -141,4 +142,38 @@ export const inputCls = 'h-9 w-full min-w-0 rounded-lg border border-line bg-pan
 
 export function Kbd({ children }: { children: ReactNode }) {
   return <kbd className="rounded border border-line bg-subtle px-1 font-mono text-[10px] text-muted">{children}</kbd>
+}
+
+
+/** Animates a number from 0 (or its previous value) to `value`. Skipped when the user prefers reduced motion. */
+export function CountUp({ value, decimals = 0, duration = 900 }: { value: number; decimals?: number; duration?: number }) {
+  const [n, setN] = useState(value)
+  const from = useRef(0)
+  useEffect(() => {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { setN(value); from.current = value; return }
+    const a = from.current, t0 = performance.now()
+    let raf = 0
+    const tick = (t: number) => {
+      const k = Math.min(1, (t - t0) / duration), e = 1 - Math.pow(1 - k, 3)
+      setN(a + (value - a) * e)
+      if (k < 1) raf = requestAnimationFrame(tick); else from.current = value
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [value, duration])
+  return <>{n.toFixed(decimals)}</>
+}
+
+/** Initials on a colour derived from the name, so each vendor is recognisable at a glance. */
+export function Avatar({ name, size = 28 }: { name: string; size?: number }) {
+  const words = name.replace(/[^\p{L}\p{N} ]/gu, '').split(/\s+/).filter(Boolean)
+  const initials = ((words[0]?.[0] ?? '?') + (words[1]?.[0] ?? '')).toUpperCase()
+  let h = 0
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360
+  return (
+    <span aria-hidden className="grid shrink-0 place-items-center rounded-lg font-semibold"
+      style={{ width: size, height: size, fontSize: size * 0.4, background: `hsl(${h} 60% 50% / 0.16)`, color: `hsl(${h} 55% 48%)` }}>
+      {initials}
+    </span>
+  )
 }

@@ -7,15 +7,20 @@
   --fg: 14 20 32; --muted: 87 96 112; --faint: 132 141 157;
   --accent: 46 84 224; --accent-fg: 255 255 255; --accent-soft: 235 240 255;
   --ok: 22 135 84; --warn: 176 112 10; --bad: 200 52 52;
+  --mem: 112 64 226; --mem-soft: 242 237 255; /* violet: used only where Hindsight memory is involved */
   color-scheme: light;
 }
-.dark {
+.dark, .side-dark {
   --bg: 10 12 16; --panel: 17 19 25; --subtle: 23 26 33; --line: 35 39 49; --line2: 50 56 69;
   --fg: 232 235 240; --muted: 156 164 178; --faint: 110 118 133;
   --accent: 122 146 255; --accent-fg: 10 12 16; --accent-soft: 26 32 58;
   --ok: 74 200 140; --warn: 235 175 70; --bad: 245 110 110;
+  --mem: 178 152 255; --mem-soft: 38 29 70;
   color-scheme: dark;
 }
+/* The sidebar is dark in both themes: it re-scopes the tokens, so everything inside just uses them. */
+.side-dark { --panel: 13 17 27; --subtle: 24 29 43; --line: 34 40 56; }
+.dark .side-dark { --panel: 14 16 21; }
 html, body, #root { height: 100%; }
 body { @apply bg-bg text-fg font-sans antialiased; font-feature-settings: 'cv11', 'ss01'; }
 .num { font-variant-numeric: tabular-nums; }
@@ -36,3 +41,8 @@ h1, h2, h3 { text-wrap: balance; }
 .md a { @apply text-accent underline underline-offset-2; }
 .md table { @apply text-[12.5px] w-full; }
 .md th, .md td { @apply border border-line px-2 py-1 text-left; }
+
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.rise { animation: rise .45s cubic-bezier(.2,.7,.2,1) both; }
+@media (prefers-reduced-motion: reduce) { .rise { animation: none; } }
+.fade-r { mask-image: linear-gradient(to right, #000 calc(100% - 56px), transparent); }

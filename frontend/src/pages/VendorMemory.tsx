@@ -1,11 +1,38 @@
-import { BookMarked, GitCompare, History, Lightbulb, Users } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
-import { Badge, Card, CardHeader, Empty, ErrorBanner, Markdown, Segmented, SkeletonLines, Stat, cx, inputCls, outcomeTone } from '../components/ui'
+import { Ban, BookMarked, GitCompare, History, Lightbulb, ListChecks, Trophy, UserCheck, Users } from 'lucide-react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Avatar, Badge, Card, CardHeader, Empty, ErrorBanner, Markdown, Segmented, Skeleton, SkeletonLines, Stat, cx, inputCls, outcomeTone } from '../components/ui'
 import { api } from '../lib/api'
 import { diffLines } from '../lib/diff'
 import { cleanFact, fmtDate, pct, tacticLabel, timeAgo } from '../lib/format'
 import { useApi, useAppData } from '../lib/hooks'
-import type { MemoryView, PlaybookHistory, RecallResp } from '../lib/types'
+import type { Episode, MemoryView, PlaybookHistory, RecallResp } from '../lib/types'
+
+/** Plain counting over the retained episodes: which tactic wins, which one backfires, who signs off. */
+function glance(eps: Episode[]) {
+  const by = new Map<string, { tactic: string; tried: number; won: number; lost: number; bestWon: number }>()
+  for (const e of eps) {
+    const t = by.get(e.tactic_used) ?? { tactic: e.tactic_used, tried: 0, won: 0, lost: 0, bestWon: 0 }
+    t.tried++
+    if (e.outcome === 'won') { t.won++; t.bestWon = Math.max(t.bestWon, e.final_discount) }
+    if (e.outcome === 'lost') t.lost++
+    by.set(e.tactic_used, t)
+  }
+  const all = [...by.values()]
+  const works = all.filter((t) => t.won > 0).sort((a, b) => b.won - a.won || b.bestWon - a.bestWon)[0] ?? null
+  const avoid = all.filter((t) => t.lost > 0 && t.won === 0).sort((a, b) => b.lost - a.lost)[0] ?? null
+  const decides = eps.filter((e) => e.decision_maker_seen).sort((a, b) => b.date.localeCompare(a.date))[0] ?? null
+  return { works, avoid, decides }
+}
+
+function Tile({ tone, icon, label, value, sub }: { tone: 'ok' | 'bad' | 'neutral'; icon: ReactNode; label: string; value: string; sub?: string }) {
+  return (
+    <div className={cx('min-w-0 rounded-lg border px-3 py-2.5', tone === 'ok' ? 'border-ok/25 bg-ok/5' : tone === 'bad' ? 'border-bad/25 bg-bad/5' : 'border-line bg-subtle/50')}>
+      <div className={cx('flex items-center gap-1.5 text-2xs font-medium uppercase tracking-wider', tone === 'ok' ? 'text-ok' : tone === 'bad' ? 'text-bad' : 'text-faint')}>{icon}{label}</div>
+      <div className="mt-1 break-words text-[14px] font-semibold leading-5 tracking-tight text-fg">{value}</div>
+      {sub && <div className="num mt-0.5 text-xs text-muted">{sub}</div>}
+    </div>
+  )
+}
 
 export default function VendorMemory() {
   const { vendors } = useAppData()
@@ -24,6 +51,7 @@ export default function VendorMemory() {
   const won = eps.filter((e) => e.outcome === 'won').length
   const best = eps.reduce((m, e) => Math.max(m, e.final_discount), 0)
   const vendor = vendors.find((v) => v.id === vid)
+  const g = useMemo(() => glance(mem.data?.episodes ?? []), [mem.data])
 
   return (
     <div className="grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
@@ -37,9 +65,9 @@ export default function VendorMemory() {
           <div className="px-2 pb-1.5 text-2xs font-medium uppercase tracking-wider text-faint">{vendors.length} vendors</div>
           {vendors.map((v) => (
             <button key={v.id} onClick={() => setVid(v.id)} aria-current={v.id === vid}
-              className={cx('flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-[13px]',
+              className={cx('flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px]',
                 v.id === vid ? 'bg-panel font-medium text-fg shadow-card ring-1 ring-line' : 'text-muted hover:bg-subtle hover:text-fg')}>
-              <span className="truncate">{v.name}</span><span className="num font-mono text-2xs text-faint">{v.episodes}</span>
+              <Avatar name={v.name} size={22} /><span className="min-w-0 flex-1 truncate">{v.name}</span><span className="num font-mono text-2xs text-faint">{v.episodes}</span>
             </button>
           ))}
         </div>
@@ -60,8 +88,29 @@ export default function VendorMemory() {
           <Stat label="Observations" value={mem.data ? obs.length : '–'} sub="consolidated beliefs" />
           <Stat label="Win rate" value={mem.data ? `${won}/${eps.length}` : '–'} sub={mem.data ? `best ${pct(best, 0)} off` : 'won / tried'} />
           <Stat label="Playbook versions" value={hist.data ? (hist.data.versions?.length ?? 0) + (hist.data.current?.content ? 1 : 0) : '–'}
-            sub={hist.data?.current?.refreshed_at ? `refreshed ${timeAgo(hist.data.current.refreshed_at)}` : 'mental model'} tone="accent" />
+            sub={hist.data?.current?.refreshed_at ? `refreshed ${timeAgo(hist.data.current.refreshed_at)}` : 'mental model'} tone="mem" />
         </Card>
+
+        {(mem.loading || eps.length > 0) && (
+          <Card>
+            <CardHeader icon={<ListChecks size={15} className="text-faint" />} title="At a glance" sub="Counted from the retained episodes, not written by the LLM." />
+            {mem.loading ? (
+              <div className="grid gap-3 sm:grid-cols-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-[76px]" />)}</div>
+            ) : (
+              <div className="rise grid gap-3 sm:grid-cols-3">
+                <Tile tone="ok" icon={<Trophy size={12} aria-hidden />} label="Works best"
+                  value={g.works ? tacticLabel(g.works.tactic) : 'No tactic has won yet'}
+                  sub={g.works ? `won ${g.works.won} of ${g.works.tried} · best ${pct(g.works.bestWon)} off` : undefined} />
+                <Tile tone="bad" icon={<Ban size={12} aria-hidden />} label="Avoid"
+                  value={g.avoid ? tacticLabel(g.avoid.tactic) : 'Nothing has backfired yet'}
+                  sub={g.avoid ? `lost ${g.avoid.lost} of ${g.avoid.tried}` : undefined} />
+                <Tile tone="neutral" icon={<UserCheck size={12} aria-hidden />} label="Who decides"
+                  value={g.decides?.decision_maker_seen ?? 'Not recorded yet'}
+                  sub={g.decides ? `seen ${fmtDate(g.decides.date)}` : undefined} />
+              </div>
+            )}
+          </Card>
+        )}
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
           <Playbook hist={hist.data} loading={hist.loading} error={hist.error} fallback={mem.data?.mental_model ?? null} />
@@ -142,7 +191,7 @@ function Playbook({ hist, loading, error, fallback }: { hist: PlaybookHistory | 
 
   return (
     <Card>
-      <CardHeader icon={<BookMarked size={15} className="text-accent" />} title="Negotiation playbook"
+      <CardHeader icon={<BookMarked size={15} className="text-mem" />} title="Negotiation playbook"
         sub="A Hindsight mental model, rewritten automatically after each consolidation"
         right={<Segmented label="Playbook view" value={view} onChange={setView}
           options={[{ value: 'current', label: 'Current' }, { value: 'history', label: <span className="flex items-center gap-1"><GitCompare size={12} />History</span> }]} />} />
@@ -157,7 +206,7 @@ function Playbook({ hist, loading, error, fallback }: { hist: PlaybookHistory | 
               <li key={i}>
                 <button disabled={i === versions.length - 1} onClick={() => setPick(i)}
                   className={cx('rounded-md border px-2 py-1 text-left text-xs',
-                    i === versions.length - 1 ? 'border-accent/40 bg-accent-soft text-accent' : i === base ? 'border-fg/30 bg-subtle font-medium' : 'border-line hover:bg-subtle')}>
+                    i === versions.length - 1 ? 'border-mem/40 bg-mem-soft text-mem' : i === base ? 'border-fg/30 bg-subtle font-medium' : 'border-line hover:bg-subtle')}>
                   <span className="font-mono font-semibold">{v.label}</span>
                   <span className="num ml-1.5 text-faint">{v.at ? new Date(v.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
                   {v.sources.world + v.sources.observation > 0 && <span className="num ml-1.5 text-faint">· {v.sources.world + v.sources.observation} src</span>}
@@ -166,7 +215,7 @@ function Playbook({ hist, loading, error, fallback }: { hist: PlaybookHistory | 
             ))}
           </ol>
           <div className="flex items-center gap-2 text-xs text-muted">
-            Comparing <b className="font-mono text-fg">{versions[base].label}</b> → <b className="font-mono text-accent">{versions[versions.length - 1].label}</b>
+            Comparing <b className="font-mono text-fg">{versions[base].label}</b> → <b className="font-mono text-mem">{versions[versions.length - 1].label}</b>
             <span className="num font-mono text-ok">+{added}</span><span className="num font-mono text-bad">−{removed}</span>
           </div>
           <pre className="max-h-[480px] overflow-auto rounded-lg border border-line bg-subtle/40 py-2 font-mono text-[11.5px] leading-5 scroll-thin">
