@@ -5,6 +5,7 @@ import time
 from collections import deque
 from datetime import datetime, timezone
 
+import httpx
 from hindsight_client import Hindsight
 
 from . import config
@@ -59,6 +60,34 @@ def ledger_counts() -> dict:
         for e in LEDGER:
             counts[e["kind"]] += 1
     return counts
+
+
+_STATS: dict = {"at": 0.0, "bank": None, "data": None}
+
+
+def bank_stats(bank_id: str) -> dict | None:
+    """Lifetime totals straight from Hindsight (survive API restarts, unlike the in-process ledger):
+    documents retained, memories (facts + observations), and playbook refreshes Hindsight ran via reflect.
+    Cached for 10 s; returns None if Hindsight is unreachable."""
+    if _STATS["bank"] == bank_id and time.time() - _STATS["at"] < 10:
+        return _STATS["data"]
+    base = f"{config.HINDSIGHT_URL}/v1/default/banks/{bank_id}"
+    try:
+        st = httpx.get(f"{base}/stats", params={"refresh": "true"}, timeout=2).json()  # unrefreshed stats lag behind
+        ops: list = []
+        while len(ops) < 2000:  # the server caps a page at 100
+            page = httpx.get(f"{base}/operations", params={"limit": 100, "offset": len(ops)}, timeout=2).json()
+            ops += page.get("operations") or []
+            if not page.get("operations") or len(ops) >= page.get("total", 0):
+                break
+        data = {"documents": st.get("total_documents", 0), "memories": st.get("total_nodes", 0),
+                "observations": st.get("total_observations", 0),
+                "reflect": sum(o.get("operation_type") == "refresh_mental_model" and o.get("status") == "completed"
+                               for o in ops)}
+    except Exception:
+        data = None
+    _STATS.update(at=time.time(), bank=bank_id, data=data)
+    return data
 
 
 def ledger(limit: int = 100) -> list[dict]:

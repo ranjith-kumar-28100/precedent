@@ -86,16 +86,26 @@ function Sidebar({ route, go, onClose }: { route: Route; go: (r: Route) => void;
           <Badge tone={health?.hindsight ? 'ok' : health ? 'bad' : 'neutral'} dot>{health ? (health.hindsight ? 'Online' : 'Offline') : '…'}</Badge>
         </div>
         <div className="num font-mono text-2xs text-faint">{health?.bank_id ?? 'precedent-procurement'}</div>
-        {health?.ledger_counts && (
-          <div className="num grid grid-cols-3 gap-1 pt-1 text-center">
-            {(['retain', 'recall', 'reflect'] as const).map((k) => (
-              <div key={k} className="rounded-md bg-panel py-1">
-                <div className="text-[13px] font-semibold text-fg">{health.ledger_counts![k]}</div>
-                <div className="text-[10px] text-faint">{k}</div>
-              </div>
-            ))}
-          </div>
-        )}
+        {(health?.bank_stats || health?.ledger_counts) && (() => {
+          const b = health.bank_stats, l = health.ledger_counts
+          // Lifetime totals from Hindsight's own stats when available; the in-process ledger resets on API restart.
+          const tiles: [number, string, string][] = b
+            ? [[b.documents, 'retained', 'Documents retained into this bank'],
+               [b.memories, 'memories', `Facts and observations Hindsight extracted (${b.observations} observations)`],
+               [b.reflect, 'reflect', 'Playbook rewrites Hindsight ran with reflect']]
+            : [[l!.retain, 'retain', ''], [l!.recall, 'recall', ''], [l!.reflect, 'reflect', '']]
+          return (<>
+            <div className="num grid grid-cols-3 gap-1 pt-1 text-center">
+              {tiles.map(([n, k, tip]) => (
+                <div key={k} title={tip} className="rounded-md bg-panel py-1">
+                  <div className="text-[13px] font-semibold text-fg">{n}</div>
+                  <div className="text-[10px] text-faint">{k}</div>
+                </div>
+              ))}
+            </div>
+            {b && l && <div className="num text-[10px] text-faint">{l.recall} recalls · {l.retain} retains this session</div>}
+          </>)
+        })()}
       </div>
     </nav>
   )

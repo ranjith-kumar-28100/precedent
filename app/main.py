@@ -21,14 +21,25 @@ def _load(name):
 
 
 CUSTOM_VENDORS = config.DATA_DIR / "custom_vendors.json"  # vendors added from the UI
+LOGGED_OUTCOMES = config.DATA_DIR / "logged_outcomes.json"  # outcomes logged from the UI / Band
+
+
+def _load_list(path, key: str) -> list[dict]:
+    try:
+        data = json.loads(path.read_text())
+        return [x for x in data if isinstance(x, dict) and key in x] if isinstance(data, list) else []
+    except (OSError, ValueError):
+        return []  # missing or corrupt: start without it
 
 
 def _load_custom() -> list[dict]:
-    try:
-        data = json.loads(CUSTOM_VENDORS.read_text())
-        return [v for v in data if isinstance(v, dict) and "id" in v] if isinstance(data, list) else []
-    except (OSError, ValueError):
-        return []  # missing or corrupt: start without custom vendors
+    return _load_list(CUSTOM_VENDORS, "id")
+
+
+def _save_list(path, items: list[dict]) -> None:
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(items, indent=2))
+    tmp.replace(path)  # atomic: a crash never leaves a half-written file
 
 
 def _load_vendors() -> dict[str, dict]:
@@ -36,13 +47,11 @@ def _load_vendors() -> dict[str, dict]:
 
 
 def _save_custom(vendors: list[dict]) -> None:
-    tmp = CUSTOM_VENDORS.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(vendors, indent=2))
-    tmp.replace(CUSTOM_VENDORS)  # atomic: a crash never leaves a half-written file
+    _save_list(CUSTOM_VENDORS, vendors)
 
 
 VENDORS = _load_vendors()
-HISTORY = _load("history.json")
+HISTORY = _load("history.json") + _load_list(LOGGED_OUTCOMES, "vendor_id")  # seeded episodes + ones logged since
 UPCOMING = _load("upcoming.json")
 JOBS: dict[str, dict] = {}
 CACHE = config.DATA_DIR / "eval_cache.json"
@@ -67,7 +76,7 @@ def health():
         ok = False
     return {"hindsight": ok, "bank_id": config.BANK_ID, "llm": config.LLM_MODEL, "llm_calls": llm.CALLS["agent"],
             "agent_spend_usd": round(llm.SPEND["usd"], 3), "agent_budget_usd": llm.BUDGET_USD,
-            "ledger_counts": memory.ledger_counts()}
+            "ledger_counts": memory.ledger_counts(), "bank_stats": memory.bank_stats(config.BANK_ID) if ok else None}
 
 
 @app.get("/api/vendors")
@@ -168,6 +177,7 @@ def outcome(req: OutcomeReq):
     memory.ensure_playbook(config.BANK_ID, v["id"], v["name"])
     memory.retain_episode(config.BANK_ID, ep, v)
     HISTORY.append(ep | {"vendor_id": v["id"]})
+    _save_list(LOGGED_OUTCOMES, _load_list(LOGGED_OUTCOMES, "vendor_id") + [ep | {"vendor_id": v["id"]}])
     return {"retained": True}
 
 

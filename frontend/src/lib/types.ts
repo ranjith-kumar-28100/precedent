@@ -18,7 +18,9 @@ export type OpCounts = { recall: number; retain: number; reflect: number; mental
 export type Health = {
   hindsight: boolean; llm: string; llm_calls?: number; agent_spend_usd?: number; agent_budget_usd?: number
   ledger_counts?: OpCounts; bank_id?: string
+  bank_stats?: BankStats | null
 }
+export type BankStats = { documents: number; memories: number; observations: number; reflect: number }
 export type LedgerOp = { t: string; op: string; vendor_id: string | null; ms: number; ok: boolean; detail: string; error: string | null }
 export type Ledger = { counts: OpCounts; ops: LedgerOp[] }
 export type PlaybookVersion = { at: string; content: string; sources: { world: number; observation: number; experience: number } }
