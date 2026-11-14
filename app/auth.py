@@ -5,8 +5,10 @@
   so a copied database can't be used to log in. Sessions expire (SESSION_HOURS) and sign-out deletes them.
 - Failed sign-ins are throttled per username and client IP; unknown users and wrong passwords get the same answer
   and take the same time.
-- Off unless AUTH_ENABLED=1, so local runs and tests are unchanged. Service clients (the Band agents) can use
-  `Authorization: Bearer <API_SERVICE_TOKEN>` instead of a cookie.
+- API clients use the OAuth2 password flow instead: POST /api/auth/token returns a short-lived JWT (HS256, signed
+  with JWT_SECRET, pinned algorithm, issuer/audience/expiry checked, unique jti so it can be revoked).
+- Off unless AUTH_ENABLED=1, so local runs and tests are unchanged. Service clients (the Band agents) can also use
+  `Authorization: Bearer <API_SERVICE_TOKEN>`.
 """
 import hashlib
 import hmac
@@ -16,12 +18,16 @@ import threading
 import time
 from contextlib import closing
 
+import jwt
+
 from . import config
 
 COOKIE = "precedent_session"
 SESSION_HOURS = float(config.env("SESSION_HOURS", "8"))
 MAX_FAILS, LOCK_SECONDS = 5, 15 * 60
 MIN_PASSWORD = 10
+JWT_ALG, JWT_ISS, JWT_AUD = "HS256", "precedent", "precedent-api"
+_EPHEMERAL_SECRET = secrets.token_urlsafe(48)  # used only if JWT_SECRET is unset: tokens then die with the process
 _SCRYPT = {"n": 2 ** 14, "r": 8, "p": 1, "dklen": 32}
 _LOCK = threading.Lock()
 _FAILS: dict[tuple[str, str], list[float]] = {}  # (username, ip) -> failure timestamps
@@ -46,6 +52,7 @@ def _conn() -> sqlite3.Connection:
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL COLLATE NOCASE, display_name TEXT NOT NULL,
             pw_hash TEXT NOT NULL, created_at REAL NOT NULL);
+        CREATE TABLE IF NOT EXISTS revoked_tokens (jti TEXT PRIMARY KEY, expires_at REAL NOT NULL);
         CREATE TABLE IF NOT EXISTS sessions (
             token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             created_at REAL NOT NULL, expires_at REAL NOT NULL);
@@ -121,8 +128,9 @@ def _h(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def login(username: str, password: str, ip: str) -> tuple[str, dict] | None:
-    """Returns (session token, user) or None. Callers check locked_for() first."""
+def authenticate(username: str, password: str, ip: str) -> tuple[int, dict] | None:
+    """Checks the password, recording failures for lockout. Returns (user id, user) or None. Callers check
+    locked_for() first."""
     with closing(_conn()) as c:
         row = c.execute("SELECT id, username, display_name, pw_hash FROM users WHERE username = ?", (username.strip(),)).fetchone()
     ok = verify_password(password, row[3] if row else _DUMMY) and row is not None
@@ -130,12 +138,21 @@ def login(username: str, password: str, ip: str) -> tuple[str, dict] | None:
         _record_fail(username, ip)
         return None
     _clear_fails(username, ip)
+    return row[0], {"username": row[1], "display_name": row[2]}
+
+
+def login(username: str, password: str, ip: str) -> tuple[str, dict] | None:
+    """Browser sign-in: returns (session token for the cookie, user) or None."""
+    got = authenticate(username, password, ip)
+    if not got:
+        return None
+    uid, user = got
     token, now = secrets.token_urlsafe(32), time.time()
     with closing(_conn()) as c, c:
         c.execute("DELETE FROM sessions WHERE expires_at < ?", (now,))
         c.execute("INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
-                  (_h(token), row[0], now, now + SESSION_HOURS * 3600))
-    return token, {"username": row[1], "display_name": row[2]}
+                  (_h(token), uid, now, now + SESSION_HOURS * 3600))
+    return token, user
 
 
 def user_for(token: str | None) -> dict | None:
@@ -158,3 +175,57 @@ def service_ok(authorization: str | None) -> bool:
     if not expected or not authorization or not authorization.startswith("Bearer "):
         return False
     return hmac.compare_digest(authorization[7:].encode(), expected.encode())
+
+
+# ---- OAuth2 bearer tokens (JWT) ------------------------------------------------------------------
+def jwt_minutes() -> int:
+    return int(config.env("JWT_MINUTES", "30"))
+
+
+def _secret() -> str:
+    s = config.env("JWT_SECRET")
+    if s and len(s) < 32:
+        raise RuntimeError("JWT_SECRET must be at least 32 characters")
+    return s or _EPHEMERAL_SECRET
+
+
+def issue_jwt(user: dict) -> tuple[str, int]:
+    """Signed access token for `user`; returns (token, lifetime in seconds)."""
+    now, ttl = int(time.time()), jwt_minutes() * 60
+    claims = {"sub": user["username"], "name": user["display_name"], "iss": JWT_ISS, "aud": JWT_AUD,
+              "iat": now, "nbf": now, "exp": now + ttl, "jti": secrets.token_urlsafe(16)}
+    return jwt.encode(claims, _secret(), algorithm=JWT_ALG), ttl
+
+
+def _claims(token: str) -> dict | None:
+    try:  # algorithm pinned, so "alg: none" or a swapped algorithm is rejected
+        return jwt.decode(token, _secret(), algorithms=[JWT_ALG], audience=JWT_AUD, issuer=JWT_ISS,
+                          options={"require": ["exp", "iat", "nbf", "sub", "jti", "aud", "iss"]})
+    except jwt.PyJWTError:
+        return None
+
+
+def user_for_jwt(token: str | None) -> dict | None:
+    """The user a bearer token belongs to, if it is valid, unrevoked, and the user still exists."""
+    c_ = _claims(token) if token else None
+    if not c_:
+        return None
+    with closing(_conn()) as c:
+        if c.execute("SELECT 1 FROM revoked_tokens WHERE jti = ?", (c_["jti"],)).fetchone():
+            return None
+        row = c.execute("SELECT username, display_name FROM users WHERE username = ?", (c_["sub"],)).fetchone()
+    return {"username": row[0], "display_name": row[1]} if row else None
+
+
+def revoke_jwt(token: str | None) -> bool:
+    c_ = _claims(token) if token else None
+    if not c_:
+        return False
+    with closing(_conn()) as c, c:
+        c.execute("DELETE FROM revoked_tokens WHERE expires_at < ?", (time.time(),))
+        c.execute("INSERT OR IGNORE INTO revoked_tokens (jti, expires_at) VALUES (?, ?)", (c_["jti"], c_["exp"]))
+    return True
+
+
+def bearer(authorization: str | None) -> str | None:
+    return authorization[7:].strip() if authorization and authorization[:7].lower() == "bearer " else None

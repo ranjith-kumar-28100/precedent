@@ -194,6 +194,17 @@ How it's secured (`app/auth.py`):
 - **Sessions** are random 256-bit tokens in an **HttpOnly, SameSite=Strict** cookie, so page scripts can't read them and other sites can't send them. Only a SHA-256 hash of the token is stored, so a copied database can't be used to sign in. Sessions expire after 8 hours (`SESSION_HOURS`), and **Sign out** deletes them on the server. Set `COOKIE_SECURE=1` when serving over HTTPS.
 - **Brute force:** after 5 failed attempts for a username from one IP, that pair is locked out for 15 minutes. An unknown user and a wrong password get the same message and take the same time.
 - **Every `/api` route** except sign-in returns 401 without a valid session. The UI goes back to the sign-in page when a session lapses. Responses carry `nosniff`, `DENY` framing and `same-origin` referrer headers.
+- **OAuth2 + JWT for API clients** (scripts, Postman, the Swagger "Authorize" button at `/docs`): `POST /api/auth/token` with form fields `username` and `password` returns `{access_token, token_type: "bearer", expires_in}`. Send it as `Authorization: Bearer <token>`.
+  - The token is an HS256 JWT signed with `JWT_SECRET` (32+ characters), valid for `JWT_MINUTES` (30 by default).
+  - The server pins the algorithm and checks issuer, audience, expiry and not-before, so unsigned or algorithm-swapped tokens are rejected.
+  - Each token has a unique `jti`. Signing out with the token revokes it, and deleting a user invalidates their tokens.
+  - The token endpoint shares the sign-in lockout.
+  - The browser still uses the HttpOnly cookie, because a token held by page scripts is easier to steal.
+
+  ```bash
+  TOKEN=$(curl -s -d "username=ranjith&password=..." localhost:8000/api/auth/token | jq -r .access_token)
+  curl -H "Authorization: Bearer $TOKEN" localhost:8000/api/vendors
+  ```
 - **Service access:** the Band agents can send `Authorization: Bearer <API_SERVICE_TOKEN>` (set `PRECEDENT_API_TOKEN` on the Band side). This is unavailable unless the token is set.
 - Logged outcomes record who was signed in as the buyer.
 

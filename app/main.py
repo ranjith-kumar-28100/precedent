@@ -4,7 +4,8 @@ import threading
 import time
 import uuid
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -12,9 +13,11 @@ from pydantic import BaseModel, Field, field_validator
 
 from . import agent, auth, chat as chat_mod, config, llm, memory, sim, suggestions as sugg
 
-app = FastAPI(title="Precedent")
+# Declares the OAuth2 scheme so /docs shows "Authorize"; the guard middleware below does the actual checking.
+oauth2 = OAuth2PasswordBearer(tokenUrl="/api/auth/token", auto_error=False)
+app = FastAPI(title="Precedent", dependencies=[Depends(oauth2)])
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-PUBLIC_API = {"/api/auth/login", "/api/auth/logout", "/api/auth/me"}
+PUBLIC_API = {"/api/auth/login", "/api/auth/logout", "/api/auth/me", "/api/auth/token"}
 
 
 @app.middleware("http")
@@ -23,9 +26,10 @@ async def guard(request: Request, call_next):
     request.state.user = None
     path = request.url.path
     if auth.enabled() and path.startswith("/api/") and path not in PUBLIC_API:
-        user = auth.user_for(request.cookies.get(auth.COOKIE))
-        if not user and not auth.service_ok(request.headers.get("authorization")):
-            return JSONResponse({"detail": "sign in required"}, status_code=401)
+        authz = request.headers.get("authorization")
+        user = auth.user_for(request.cookies.get(auth.COOKIE)) or auth.user_for_jwt(auth.bearer(authz))
+        if not user and not auth.service_ok(authz):
+            return JSONResponse({"detail": "sign in required"}, status_code=401, headers={"WWW-Authenticate": "Bearer"})
         request.state.user = user
     resp = await call_next(request)
     resp.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -54,9 +58,25 @@ def auth_login(req: LoginReq, request: Request, response: Response):
     return user
 
 
+@app.post("/api/auth/token")
+def auth_token(request: Request, form: OAuth2PasswordRequestForm = Depends()):
+    """OAuth2 password flow for API clients: form fields username + password, returns a bearer JWT."""
+    ip = request.client.host if request.client else "?"
+    wait = auth.locked_for(form.username, ip)
+    if wait:
+        raise HTTPException(429, f"Too many failed attempts. Try again in {max(1, wait // 60)} minute(s).")
+    got = auth.authenticate(form.username, form.password, ip)
+    if not got:
+        raise HTTPException(401, "Invalid username or password.", headers={"WWW-Authenticate": "Bearer"})
+    token, ttl = auth.issue_jwt(got[1])
+    return {"access_token": token, "token_type": "bearer", "expires_in": ttl}
+
+
 @app.post("/api/auth/logout")
 def auth_logout(request: Request, response: Response):
+    """Ends the browser session and, if a bearer JWT is sent, revokes it."""
     auth.logout(request.cookies.get(auth.COOKIE))
+    auth.revoke_jwt(auth.bearer(request.headers.get("authorization")))
     response.delete_cookie(auth.COOKIE, path="/")
     return {"signed_out": True}
 
@@ -65,9 +85,9 @@ def auth_logout(request: Request, response: Response):
 def auth_me(request: Request):
     if not auth.enabled():
         return {"auth_enabled": False, "user": None}
-    user = auth.user_for(request.cookies.get(auth.COOKIE))
+    user = auth.user_for(request.cookies.get(auth.COOKIE)) or auth.user_for_jwt(auth.bearer(request.headers.get("authorization")))
     if not user:
-        raise HTTPException(401, "sign in required")
+        raise HTTPException(401, "sign in required", headers={"WWW-Authenticate": "Bearer"})
     return {"auth_enabled": True, "user": user}
 
 

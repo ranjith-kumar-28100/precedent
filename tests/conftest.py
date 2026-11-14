@@ -69,6 +69,8 @@ def offline(monkeypatch):
     fake = FakeHindsight()
     monkeypatch.setattr(memory, "client", lambda: fake)
     monkeypatch.setitem(llm.SPEND, "usd", 0.0)
+    for var in ("AUTH_ENABLED", "API_SERVICE_TOKEN", "JWT_SECRET", "JWT_MINUTES", "COOKIE_SECURE"):
+        monkeypatch.delenv(var, raising=False)  # tests never depend on the developer's local .env
     return fake
 
 
