@@ -81,5 +81,5 @@ def api(monkeypatch, tmp_path):
     monkeypatch.setattr(main, "LOGGED_OUTCOMES", tmp_path / "logged_outcomes.json")
     monkeypatch.setattr(main, "SUGGESTIONS_CACHE", tmp_path / "suggestions_cache.json")
     monkeypatch.setattr(main, "SUGGESTIONS", {})
-    monkeypatch.setattr(main, "HISTORY", list(main.HISTORY))
+    monkeypatch.setattr(main, "HISTORY", main._load("history.json"))  # seeded episodes only, not real logged ones
     return TestClient(main.app)
