@@ -34,3 +34,4 @@ export type RecallResp = {
 }
 export type EvalPoint = { episode: number; savings_pct: number; won: number | boolean }
 export type EvalResp = { status: string; episodes?: number; vendors?: number; series: { memory: EvalPoint[]; baseline: EvalPoint[] } }
+export type NewVendor = { name: string; category: string; contact?: string; list_price_usd_annual: number; notes?: string }

@@ -36,8 +36,8 @@ export default function App() {
   const ctx = useMemo(() => {
     const list = vendors.data ?? []
     const byId = new Map(list.map((v) => [v.id, v.name]))
-    return { vendors: list, vendorName: (id: string | null | undefined) => (id ? byId.get(id) ?? id : 'All vendors'), health: health.data, refreshHealth: health.reload }
-  }, [vendors.data, health.data, health.reload])
+    return { vendors: list, vendorName: (id: string | null | undefined) => (id ? byId.get(id) ?? id : 'All vendors'), health: health.data, refreshHealth: health.reload, refreshVendors: vendors.reload }
+  }, [vendors.data, vendors.reload, health.data, health.reload])
 
   return (
     <AppCtx.Provider value={ctx}>

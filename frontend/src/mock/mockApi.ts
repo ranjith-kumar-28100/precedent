@@ -2,13 +2,72 @@
 // plus a snapshot of real Hindsight reads, so mock screens show real vendor history.
 import { EVAL, HISTORY, UPCOMING, VENDORS } from './data'
 import { MEMORY } from './memory'
+import { ApiError } from '../lib/api'
 import { tacticLabel } from '../lib/format'
-import type { BriefResp, Citation, Episode, Ledger, LedgerOp, RecallHit, RecallResp } from '../lib/types'
+import type { BriefResp, Citation, Episode, Ledger, LedgerOp, NewVendor, RecallHit, RecallResp, Vendor } from '../lib/types'
 
 const sleep = (t: number) => new Promise((r) => setTimeout(r, t))
 const H = HISTORY as Episode[]
 const vendorName = (id: string) => VENDORS.find((v) => v.id === id)?.name ?? id
 const episodesOf = (vid: string) => H.filter((e) => e.vendor_id === vid).sort((a, b) => a.date.localeCompare(b.date))
+
+// Vendors added in this session via POST /vendors: what we already knew about them (their first memory).
+const PROFILE: Record<string, { notes: string; date: string }> = {}
+const CREATED = new Set<string>()
+const today = () => new Date().toISOString().slice(0, 10)
+
+function fail(status: number, detail: string): never {
+  throw new ApiError(`${status} on /vendors: ${detail}`, status, detail)
+}
+
+function addVendor(body: Partial<NewVendor> | undefined): Vendor {
+  const str = (x: unknown) => (typeof x === 'string' ? x.trim() : '')
+  const name = str(body?.name), category = str(body?.category), contact = str(body?.contact) || 'unknown', notes = str(body?.notes)
+  const price = body?.list_price_usd_annual
+  if (name.length < 2 || name.length > 80) fail(422, 'name: must be 2 to 80 characters')
+  if (category.length < 2 || category.length > 60) fail(422, 'category: must be 2 to 60 characters')
+  if (typeof price !== 'number' || !Number.isInteger(price) || price <= 0) fail(422, 'list_price_usd_annual: must be a whole number above 0')
+  if (notes.length > 1000) fail(422, 'notes: at most 1000 characters')
+  if (VENDORS.some((v) => v.name.trim().toLowerCase() === name.toLowerCase())) fail(409, 'vendor already exists')
+  const n = Math.max(0, ...VENDORS.map((v) => (/^v\d+$/.test(v.id) ? +v.id.slice(1) : 0))) + 1
+  const v: Vendor = { id: `v${String(n).padStart(2, '0')}`, name, category, contact, list_price_usd_annual: price, episodes: 0 }
+  VENDORS.push(v)
+  CREATED.add(v.id)
+  if (notes) PROFILE[v.id] = { notes, date: today() }
+  log('retain', v.id, 2600, notes ? `Vendor profile · ${name}` : `Vendor created · ${name} (no notes)`, true)
+  return v
+}
+
+/** Memory ON for a vendor with no negotiations: only the profile notes (if any) to go on. */
+function briefColdStart(vid: string): BriefResp {
+  const off = briefOff(vid)
+  const p = PROFILE[vid]
+  const citations: Citation[] = p ? [{ id: 'm1', kind: 'fact', date: p.date, text: p.notes }] : []
+  return {
+    ...off, use_memory: true, latency_ms: 7400, citations,
+    brief: {
+      ...off.brief,
+      summary: p
+        ? `Hindsight has one memory of ${vendorName(vid)} and no negotiations yet [m1]. Treat every tactic as an experiment, then log the outcome so the next brief has evidence.`
+        : `Hindsight has no memories of ${vendorName(vid)} yet: this is a cold start. Treat every tactic as an experiment, then log the outcome so the next brief has evidence.`,
+      vendor_profile: p ? `What we knew before the first negotiation [m1].` : 'Unknown: no recorded negotiations.',
+    },
+    trace: [
+      { step: 1, tool: 'tactic_scoreboard', args: {}, result: '0 episodes' },
+      { step: 2, tool: 'recall_memory', args: { query: 'who approves discounts and how far they go' }, result: p ? '1 memory: m1' : '0 memories' },
+      { step: 3, tool: 'get_playbook', args: {}, result: 'playbook empty' },
+      { step: 4, tool: 'submit_brief', args: {}, result: 'brief submitted' },
+    ],
+  }
+}
+
+function profileHits(id: string): RecallHit[] {
+  const p = PROFILE[id]
+  return p ? [{
+    id: `${id}-profile`, text: p.notes, type: 'world', date: p.date, vendor_id: id, tactic: null, outcome: null, entities: [], score: 0.5,
+    channels: { semantic: 1, bm25: 1, graph: null, temporal: null }, rerank_rank: 1, rrf_rank: 1,
+  }] : []
+}
 
 function stats(vid: string) {
   const by: Record<string, { tries: number; won: number; lost: number; best: number }> = {}
@@ -124,10 +183,11 @@ function briefOff(vid: string): BriefResp {
 }
 
 function recall(body: { query: string; vendor_id: string | null; as_of: string | null; limit?: number }): RecallResp {
-  const ids = body.vendor_id ? [body.vendor_id] : Object.keys(MEMORY)
+  const ids = body.vendor_id ? [body.vendor_id] : [...Object.keys(MEMORY), ...Object.keys(PROFILE)]
   let results: RecallHit[] = []
   for (const id of ids) {
     const snap = MEMORY[id]
+    results.push(...profileHits(id))
     if (snap) results.push(...(snap.recall.results as RecallHit[]))
     else
       results.push(...episodesOf(id).map((e, i) => ({
@@ -180,20 +240,28 @@ export async function mockApi(path: string, body?: any): Promise<unknown> {
   switch (true) {
     case path === '/health':
       return { hindsight: true, llm: 'gpt-4.1 (mock)', llm_calls: 0, agent_spend_usd: 0, agent_budget_usd: 3, bank_id: 'precedent-procurement', ledger_counts: counts() }
-    case path === '/vendors': return VENDORS
+    case path === '/vendors': return body === undefined ? VENDORS.map((v) => ({ ...v })) : addVendor(body)
     case path === '/upcoming': return UPCOMING
     case path === '/eval/cached': return { ...EVAL, status: 'done' }
     case path.startsWith('/ledger'): return { counts: counts(), ops: OPS.slice(0, 100) }
     case path === '/brief':
       await sleep(body.use_memory ? 1400 : 800)
       log('recall', body.vendor_id, 1840, `tactic scoreboard · tags=vendor:${body.vendor_id}`, true)
-      return body.use_memory ? briefOn(body.vendor_id) : briefOff(body.vendor_id)
+      if (!body.use_memory) return briefOff(body.vendor_id)
+      return MEMORY[body.vendor_id] || episodesOf(body.vendor_id).length ? briefOn(body.vendor_id) : briefColdStart(body.vendor_id)
     case path === '/chat':
       await sleep(1200)
       if (body.use_memory) log('recall', body.vendor_id, 401, 'bank-wide chat search', true)
       return chat(body)
     case path === '/outcome':
       log('retain', body.vendor_id, 3900, `Episode · ${body.tactic_used} · ${body.outcome}`, true)
+      // Vendors added this session accumulate history, so the cold start -> evidence loop can be shown in mock mode.
+      if (CREATED.has(body.vendor_id)) {
+        H.push({ vendor_id: body.vendor_id, date: today(), tactic_used: body.tactic_used, ask_discount: body.ask_discount,
+          final_discount: body.final_discount, outcome: body.outcome, notes: body.notes })
+        const v = VENDORS.find((x) => x.id === body.vendor_id)
+        if (v) v.episodes++
+      }
       return { retained: true }
     case path === '/memory/recall':
       log('recall', body.vendor_id, 286, `"${String(body.query).slice(0, 40)}"${body.as_of ? ` · as of ${body.as_of}` : ''}`, true)
@@ -206,6 +274,8 @@ export async function mockApi(path: string, body?: any): Promise<unknown> {
     case path.startsWith('/memory/'): {
       const snap = MEMORY[vid]
       const eps = episodesOf(vid)
+      if (CREATED.has(vid) || (!snap && !eps.length))
+        return { facts: (PROFILE[vid] ? 1 : 0) + eps.length * 3, episodes: eps, observations: [], mental_model: null }
       return snap ? { ...snap.memory, episodes: eps } : {
         facts: eps.length * 3, episodes: eps, observations: [],
         mental_model: `## ${vendorName(vid)}\n\nPlaybook snapshot not included in mock mode for this vendor. Episodes below are the recorded history.`,

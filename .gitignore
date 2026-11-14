@@ -10,3 +10,5 @@ band_agents/.venv/
 .playwright-mcp/
 *.log
 content/
+data/custom_vendors.json
+data/custom_vendors.json.tmp

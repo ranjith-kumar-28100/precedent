@@ -42,6 +42,10 @@ export function useAction<B, T>(path: string) {
   return { ...state, run, reset }
 }
 
-export type AppData = { vendors: Vendor[]; vendorName: (id: string | null | undefined) => string; health: Health | null; refreshHealth: () => void }
-export const AppCtx = createContext<AppData>({ vendors: [], vendorName: (id) => id ?? '', health: null, refreshHealth: () => {} })
+export type AppData = {
+  vendors: Vendor[]; vendorName: (id: string | null | undefined) => string; health: Health | null; refreshHealth: () => void
+  /** Re-fetch GET /vendors, e.g. after a vendor is added. */
+  refreshVendors: () => void
+}
+export const AppCtx = createContext<AppData>({ vendors: [], vendorName: (id) => id ?? '', health: null, refreshHealth: () => {}, refreshVendors: () => {} })
 export const useAppData = () => useContext(AppCtx)

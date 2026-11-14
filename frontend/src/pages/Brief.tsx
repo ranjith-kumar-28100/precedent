@@ -1,25 +1,52 @@
-import { ArrowRight, BrainCircuit, CalendarClock, CircleOff, FileCheck2, Play, ShieldAlert, Sparkles, UserRound } from 'lucide-react'
+import { ArrowRight, BrainCircuit, CalendarClock, CheckCircle2, CircleOff, FileCheck2, Play, Plus, ShieldAlert, Sparkles, UserRound, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { AddVendorPanel } from '../components/AddVendor'
 import { Cited, EvidenceDrawer } from '../components/Evidence'
 import { Trace } from '../components/Trace'
 import { Badge, Button, Card, CardHeader, Empty, ErrorBanner, Field, Meter, SkeletonLines, cx, inputCls } from '../components/ui'
 import { api } from '../lib/api'
 import { fmtDate, ms, tacticLabel, usd } from '../lib/format'
 import { useApi, useAppData } from '../lib/hooks'
-import type { BriefResp, Upcoming } from '../lib/types'
+import type { BriefResp, Upcoming, Vendor } from '../lib/types'
 
 type Run = { data: BriefResp | null; error: string | null; loading: boolean }
 const idle: Run = { data: null, error: null, loading: false }
 
+/** A newly added vendor has nothing on the calendar yet; give it a first negotiation so a brief can be generated. */
+function firstDeal(v: Vendor): Upcoming {
+  const due = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10)
+  return {
+    vendor_id: v.id, deadline: due,
+    objective: `First negotiation with ${v.name}: agree a discount off the ${usd(v.list_price_usd_annual)}/yr list price`,
+    context: `New ${v.category} vendor${v.contact && v.contact !== 'unknown' ? `; contact ${v.contact}` : ''}. No negotiation history in memory yet.`,
+  }
+}
+
 export default function BriefPage() {
-  const { vendors, vendorName, refreshHealth } = useAppData()
+  const app = useAppData()
+  const { refreshHealth } = app
   const up = useApi<Upcoming[]>('/upcoming')
   const [sel, setSel] = useState(0)
   const [on, setOn] = useState<Run>(idle)
   const [off, setOff] = useState<Run>(idle)
   const [drawer, setDrawer] = useState<string | null | false>(false)
-  const deal = up.data?.[sel]
+  // Vendors added on this page: kept locally so their card renders before GET /vendors has refreshed.
+  const [added, setAdded] = useState<Vendor[]>([])
+  const [adding, setAdding] = useState(false)
+  const [note, setNote] = useState<string | null>(null)
+  const vendors = useMemo(() => [...app.vendors, ...added.filter((a) => !app.vendors.some((v) => v.id === a.id))], [app.vendors, added])
+  const vendorName = useCallback((id: string | null | undefined) => (id && added.find((a) => a.id === id)?.name) || app.vendorName(id), [added, app])
+  const deals = useMemo(() => up.data && [...up.data, ...added.filter((a) => !up.data!.some((u) => u.vendor_id === a.id)).map(firstDeal)], [up.data, added])
+  const deal = deals?.[sel]
   const vendor = vendors.find((v) => v.id === deal?.vendor_id)
+
+  const onAdded = (v: Vendor) => {
+    setAdded((a) => [...a, v])
+    setSel(deals?.length ?? 0)
+    setAdding(false)
+    setNote(`Added ${v.name}. No negotiation history yet — generate a brief to see a cold start, then log an outcome.`)
+  }
+  useEffect(() => { document.getElementById(`deal-${sel}`)?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }) }, [sel, deals?.length])
 
   useEffect(() => { setOn(idle); setOff(idle) }, [sel])
 
@@ -41,20 +68,27 @@ export default function BriefPage() {
   return (
     <div className="space-y-5">
       <section aria-label="Upcoming negotiations">
-        <div className="mb-2 flex items-baseline justify-between">
+        <div className="mb-2 flex items-center justify-between gap-3">
           <h2 className="text-[13px] font-semibold">Upcoming negotiations</h2>
-          <span className="text-xs text-muted">{up.data?.length ?? 0} on the calendar</span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted">{deals?.length ?? 0} on the calendar</span>
+            <Button size="sm" onClick={() => { setAdding((a) => !a); setNote(null) }} aria-expanded={adding} aria-controls="add-vendor-panel">
+              <Plus size={13} />Add vendor
+            </Button>
+          </div>
         </div>
         {up.error && <ErrorBanner error={up.error} onRetry={up.reload} />}
         <div className="-mx-1 flex snap-x gap-2.5 overflow-x-auto px-1 pb-1 scroll-thin">
-          {(up.data ?? Array.from({ length: 4 }, () => null)).map((u, i) => (
-            <button key={i} disabled={!u} onClick={() => setSel(i)} aria-pressed={i === sel}
+          {(deals ?? Array.from({ length: 4 }, () => null)).map((u, i) => (
+            <button key={i} id={`deal-${i}`} disabled={!u} onClick={() => setSel(i)} aria-pressed={i === sel}
               className={cx('w-64 shrink-0 snap-start rounded-xl border p-3 text-left transition-colors',
                 i === sel && u ? 'border-accent bg-accent-soft/50 ring-1 ring-accent/30' : 'border-line bg-panel hover:border-line2')}>
               {u ? (<>
                 <div className="flex items-center justify-between gap-2">
                   <span className="truncate text-[13px] font-semibold">{vendorName(u.vendor_id)}</span>
-                  <span className="num shrink-0 font-mono text-2xs text-faint">{fmtDate(u.deadline)}</span>
+                  {added.some((a) => a.id === u.vendor_id)
+                    ? <Badge tone="accent">New</Badge>
+                    : <span className="num shrink-0 font-mono text-2xs text-faint">{fmtDate(u.deadline)}</span>}
                 </div>
                 <p className="mt-1 line-clamp-2 text-xs leading-[18px] text-muted">{u.objective}</p>
               </>) : <SkeletonLines n={2} />}
@@ -62,6 +96,15 @@ export default function BriefPage() {
           ))}
         </div>
       </section>
+
+      {adding && <AddVendorPanel id="add-vendor-panel" onClose={() => setAdding(false)} onAdded={onAdded} />}
+      {note && (
+        <div role="status" className="flex items-start gap-2.5 rounded-lg border border-ok/30 bg-ok/5 px-3 py-2.5 text-[13px] text-ok">
+          <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
+          <div className="min-w-0 flex-1">{note}</div>
+          <button type="button" onClick={() => setNote(null)} aria-label="Dismiss" className="rounded p-0.5 text-ok/80 hover:bg-ok/10 hover:text-ok"><X size={14} /></button>
+        </div>
+      )}
 
       {deal && (
         <Card>
@@ -104,7 +147,7 @@ export default function BriefPage() {
         <EvidenceDrawer open={drawer !== false} onClose={() => setDrawer(false)} citations={on.data.citations}
           active={drawer || null} title={vendorName(on.data.vendor_id)} />
       )}
-      {deal && <OutcomeForm vendorId={deal.vendor_id} />}
+      {deal && <OutcomeForm key={deal.vendor_id} vendorId={deal.vendor_id} vendorLabel={vendorName(deal.vendor_id)} />}
     </div>
   )
 }
@@ -210,8 +253,8 @@ function BriefCol({ mode, run, onCite }: { mode: 'on' | 'off'; run: Run; onCite:
 
 const TACTICS = ['competing_quote', 'multi_year', 'volume_commit', 'quarter_end_timing', 'escalate_to_exec', 'payment_terms']
 
-function OutcomeForm({ vendorId }: { vendorId: string }) {
-  const { vendorName, refreshHealth } = useAppData()
+function OutcomeForm({ vendorId, vendorLabel }: { vendorId: string; vendorLabel: string }) {
+  const { refreshHealth, refreshVendors } = useAppData()
   const [open, setOpen] = useState(false)
   const [f, setF] = useState({ tactic_used: 'competing_quote', ask: '15', got: '12', outcome: 'won', notes: '' })
   const [state, setState] = useState<'idle' | 'saving' | 'done' | string>('idle')
@@ -220,12 +263,12 @@ function OutcomeForm({ vendorId }: { vendorId: string }) {
     setState('saving')
     try {
       await api('/outcome', { vendor_id: vendorId, tactic_used: f.tactic_used, ask_discount: +f.ask / 100, final_discount: +f.got / 100, outcome: f.outcome, notes: f.notes })
-      setState('done'); refreshHealth()
+      setState('done'); refreshHealth(); refreshVendors()
     } catch (e) { setState(String((e as Error).message)) }
   }
   return (
     <Card>
-      <CardHeader title="Log the outcome" sub={`Retained to Hindsight as a new episode for ${vendorName(vendorId)}. The playbook re-consolidates from it.`}
+      <CardHeader title="Log the outcome" sub={`Retained to Hindsight as a new episode for ${vendorLabel}. The playbook re-consolidates from it.`}
         right={<Button size="sm" variant="ghost" onClick={() => setOpen(!open)} aria-expanded={open}>{open ? 'Hide' : 'Open form'}</Button>} />
       {open && (
         <form className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" onSubmit={(e) => { e.preventDefault(); if (valid) save() }}>

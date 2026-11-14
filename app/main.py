@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 from . import agent, chat as chat_mod, config, llm, memory, sim
 
@@ -20,7 +20,28 @@ def _load(name):
     return json.loads((config.DATA_DIR / name).read_text())
 
 
-VENDORS = {v["id"]: v for v in _load("vendors.json")}
+CUSTOM_VENDORS = config.DATA_DIR / "custom_vendors.json"  # vendors added from the UI
+
+
+def _load_custom() -> list[dict]:
+    try:
+        data = json.loads(CUSTOM_VENDORS.read_text())
+        return [v for v in data if isinstance(v, dict) and "id" in v] if isinstance(data, list) else []
+    except (OSError, ValueError):
+        return []  # missing or corrupt: start without custom vendors
+
+
+def _load_vendors() -> dict[str, dict]:
+    return {v["id"]: v for v in _load("vendors.json") + _load_custom()}
+
+
+def _save_custom(vendors: list[dict]) -> None:
+    tmp = CUSTOM_VENDORS.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(vendors, indent=2))
+    tmp.replace(CUSTOM_VENDORS)  # atomic: a crash never leaves a half-written file
+
+
+VENDORS = _load_vendors()
 HISTORY = _load("history.json")
 UPCOMING = _load("upcoming.json")
 JOBS: dict[str, dict] = {}
@@ -57,9 +78,60 @@ def vendors():
     return [{**public(v), "episodes": n.get(v["id"], 0)} for v in VENDORS.values()]
 
 
+class VendorReq(BaseModel):
+    name: str = Field(min_length=2, max_length=80)
+    category: str = Field(min_length=2, max_length=60)
+    contact: str = Field("unknown", max_length=120)
+    list_price_usd_annual: int = Field(gt=0, le=1_000_000_000)
+    notes: str = Field("", max_length=1000)  # what we already know about the vendor
+
+    @field_validator("name", "category", "contact", "notes", mode="before")
+    @classmethod
+    def _strip(cls, v):
+        return v.strip() if isinstance(v, str) else v
+
+
+def _next_id() -> str:
+    nums = [int(k[1:]) for k in VENDORS if k[:1] == "v" and k[1:].isdigit()]
+    return f"v{max(nums, default=0) + 1:02d}"
+
+
+_ADD_LOCK = threading.Lock()  # concurrent adds must not get the same id
+
+
+@app.post("/api/vendors")
+def add_vendor(req: VendorReq):
+    with _ADD_LOCK:
+        return _add_vendor(req)
+
+
+def _add_vendor(req: VendorReq) -> dict:
+    from datetime import date
+    if req.name.lower() in {v["name"].strip().lower() for v in VENDORS.values()}:
+        raise HTTPException(409, "vendor already exists")
+    vid = _next_id()
+    v = {"id": vid, "name": req.name, "category": req.category, "contact": req.contact or "unknown",
+         "list_price_usd_annual": req.list_price_usd_annual, "added": date.today().isoformat()}
+    memory.ensure_playbook(config.BANK_ID, vid, v["name"])
+    try:
+        memory.retain_profile(config.BANK_ID, v, req.notes, date.today().isoformat())
+    except Exception as e:  # not in memory -> not added, so the UI never shows a vendor Hindsight lacks
+        raise HTTPException(502, f"could not save vendor to memory: {type(e).__name__}: {e}")
+    VENDORS[vid] = v
+    _save_custom([x for x in VENDORS.values() if "hidden" not in x])
+    return {**public(v), "episodes": 0}
+
+
 @app.get("/api/upcoming")
 def upcoming():
-    return UPCOMING
+    """Calendar deals, plus a first deal for every vendor added from the UI (so it has a card on the Brief page)."""
+    from datetime import date, timedelta
+    have = {u["vendor_id"] for u in UPCOMING}
+    extra = [{"vendor_id": v["id"], "objective": f"First negotiation with {v['name']}: open at 18% off list",
+              "context": "New vendor: no negotiation history on record yet.",
+              "deadline": (date.fromisoformat(v.get("added") or date.today().isoformat()) + timedelta(days=30)).isoformat()}
+             for v in VENDORS.values() if "hidden" not in v and v["id"] not in have]
+    return UPCOMING + extra
 
 
 class BriefReq(BaseModel):
@@ -161,7 +233,7 @@ def _run_eval(job_id: str, episodes: int, n_vendors: int):
 def _eval_loop(job, job_id, episodes, n_vendors):
     bank = f"precedent-eval-{job_id}"
     memory.ensure_bank(bank)
-    ids = list(VENDORS)[:n_vendors]
+    ids = [k for k, v in VENDORS.items() if "hidden" in v][:n_vendors]  # simulator vendors only
     rng = random.Random(7)
     series = job["series"]
     total = episodes * len(ids)
