@@ -4,6 +4,7 @@ import os
 import httpx
 
 BASE = os.environ.get("PRECEDENT_API", "http://localhost:8000")
+TOKEN = os.environ.get("PRECEDENT_API_TOKEN", "")  # matches API_SERVICE_TOKEN when the API requires sign-in
 
 
 class PrecedentApi:
@@ -12,7 +13,8 @@ class PrecedentApi:
         self._vendors: list[dict] | None = None
 
     async def _req(self, method: str, path: str, **kw):
-        async with httpx.AsyncClient(timeout=180) as c:
+        headers = {"Authorization": f"Bearer {TOKEN}"} if TOKEN else {}
+        async with httpx.AsyncClient(timeout=180, headers=headers) as c:
             r = await c.request(method, self.base + path, **kw)
             r.raise_for_status()
             return r.json()

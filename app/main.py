@@ -4,16 +4,71 @@ import threading
 import time
 import uuid
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from . import agent, chat as chat_mod, config, llm, memory, sim, suggestions as sugg
+from . import agent, auth, chat as chat_mod, config, llm, memory, sim, suggestions as sugg
 
 app = FastAPI(title="Precedent")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+PUBLIC_API = {"/api/auth/login", "/api/auth/logout", "/api/auth/me"}
+
+
+@app.middleware("http")
+async def guard(request: Request, call_next):
+    """With AUTH_ENABLED=1, every /api route except sign-in needs a valid session cookie (or the service token)."""
+    request.state.user = None
+    path = request.url.path
+    if auth.enabled() and path.startswith("/api/") and path not in PUBLIC_API:
+        user = auth.user_for(request.cookies.get(auth.COOKIE))
+        if not user and not auth.service_ok(request.headers.get("authorization")):
+            return JSONResponse({"detail": "sign in required"}, status_code=401)
+        request.state.user = user
+    resp = await call_next(request)
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("X-Frame-Options", "DENY")
+    resp.headers.setdefault("Referrer-Policy", "same-origin")
+    return resp
+
+
+class LoginReq(BaseModel):
+    username: str = Field(min_length=1, max_length=60)
+    password: str = Field(min_length=1, max_length=200)
+
+
+@app.post("/api/auth/login")
+def auth_login(req: LoginReq, request: Request, response: Response):
+    ip = request.client.host if request.client else "?"
+    wait = auth.locked_for(req.username, ip)
+    if wait:
+        raise HTTPException(429, f"Too many failed attempts. Try again in {max(1, wait // 60)} minute(s).")
+    got = auth.login(req.username, req.password, ip)
+    if not got:
+        raise HTTPException(401, "Invalid username or password.")
+    token, user = got
+    response.set_cookie(auth.COOKIE, token, max_age=int(auth.SESSION_HOURS * 3600), httponly=True, samesite="strict",
+                        secure=auth.cookie_secure(), path="/")
+    return user
+
+
+@app.post("/api/auth/logout")
+def auth_logout(request: Request, response: Response):
+    auth.logout(request.cookies.get(auth.COOKIE))
+    response.delete_cookie(auth.COOKIE, path="/")
+    return {"signed_out": True}
+
+
+@app.get("/api/auth/me")
+def auth_me(request: Request):
+    if not auth.enabled():
+        return {"auth_enabled": False, "user": None}
+    user = auth.user_for(request.cookies.get(auth.COOKIE))
+    if not user:
+        raise HTTPException(401, "sign in required")
+    return {"auth_enabled": True, "user": user}
 
 
 def _load(name):
@@ -171,10 +226,11 @@ class OutcomeReq(BaseModel):
 
 
 @app.post("/api/outcome")
-def outcome(req: OutcomeReq):
+def outcome(req: OutcomeReq, request: Request):
     from datetime import date
     v = vendor_or_404(req.vendor_id)
-    ep = req.model_dump() | {"date": req.date or date.today().isoformat(), "buyer": "our team"}
+    who = getattr(request.state, "user", None)
+    ep = req.model_dump() | {"date": req.date or date.today().isoformat(), "buyer": who["display_name"] if who else "our team"}
     memory.ensure_playbook(config.BANK_ID, v["id"], v["name"])
     memory.retain_episode(config.BANK_ID, ep, v)
     HISTORY.append(ep | {"vendor_id": v["id"]})

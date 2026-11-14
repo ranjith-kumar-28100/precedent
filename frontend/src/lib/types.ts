@@ -8,6 +8,8 @@ export type Brief = {
   tactics: Tactic[]; watch_outs: string[]; needs_verification?: VerifyItem[]
 }
 export type VerifyItem = { claim: string; reason: string; last_evidence_date: string | null; ask: string }
+export type AuthUser = { username: string; display_name: string }
+export type AuthMe = { auth_enabled: boolean; user: AuthUser | null }
 export type VerifyDraft = { to: string; subject: string; body: string }
 export type BriefResp = { vendor_id: string; use_memory: boolean; brief: Brief; citations: Citation[]; trace?: TraceStep[]; latency_ms: number }
 export type ChatResp = { answer: string; use_memory: boolean; citations: Citation[]; trace: TraceStep[]; latency_ms: number }

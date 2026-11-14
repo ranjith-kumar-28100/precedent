@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { api } from './api'
-import type { Health, Vendor } from './types'
+import type { AuthUser, Health, Vendor } from './types'
 
 export type AsyncState<T> = { data: T | null; error: string | null; loading: boolean; reload: () => void }
 
@@ -46,6 +46,9 @@ export type AppData = {
   vendors: Vendor[]; vendorName: (id: string | null | undefined) => string; health: Health | null; refreshHealth: () => void
   /** Re-fetch GET /vendors, e.g. after a vendor is added. */
   refreshVendors: () => void
+  /** Signed-in user when sign-in is enabled. */
+  user?: AuthUser | null
+  signOut?: () => void
 }
 export const AppCtx = createContext<AppData>({ vendors: [], vendorName: (id) => id ?? '', health: null, refreshHealth: () => {}, refreshVendors: () => {} })
 export const useAppData = () => useContext(AppCtx)

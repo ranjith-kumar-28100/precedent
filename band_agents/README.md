@@ -13,6 +13,7 @@ Tactics: competing_quote, volume_commit, multi_year, quarter_end_timing, bundle,
 
 ## Setup
 1. Start the Precedent backend (and Hindsight) from the parent project so `http://localhost:8000/api/vendors` responds. Override with `PRECEDENT_API=http://host:port`.
+   If the API has sign-in switched on (`AUTH_ENABLED=1`), set `PRECEDENT_API_TOKEN` to the API's `API_SERVICE_TOKEN`.
 2. Sign up / log in at https://app.band.ai.
 3. Open **Agents**, click **Connect remote agent**. Do this 3 times, naming them exactly **Scout**, **Negotiator**, **Ledger**. For each, copy the **ID** and **API Key** (the key is shown once).
 4. `cd band_agents && cp agent_config.example.yaml agent_config.yaml` and paste the three ID/key pairs (keys `scout`, `negotiator`, `ledger` must stay as is). This file is git-ignored.

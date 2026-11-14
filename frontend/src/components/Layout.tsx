@@ -1,4 +1,4 @@
-import { Activity, BookOpen, Database, FileText, LineChart, Menu, MessageSquare, Monitor, Moon, Search, Sun, X } from 'lucide-react'
+import { Activity, BookOpen, Database, FileText, LineChart, LogOut, Menu, MessageSquare, Monitor, Moon, Search, Sun, UserRound, X } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { MOCK } from '../lib/api'
 import { useAppData } from '../lib/hooks'
@@ -80,6 +80,7 @@ function Sidebar({ route, go, onClose }: { route: Route; go: (r: Route) => void;
           </div>
         ))}
       </div>
+      <SignedIn />
       <div className="space-y-2 rounded-lg border border-line bg-subtle/60 p-3 text-xs">
         <div className="flex items-center justify-between">
           <span className="flex items-center gap-1.5 font-medium"><Database size={13} className="text-faint" />Hindsight</span>
@@ -108,6 +109,18 @@ function Sidebar({ route, go, onClose }: { route: Route; go: (r: Route) => void;
         })()}
       </div>
     </nav>
+  )
+}
+
+function SignedIn() {
+  const { user, signOut } = useAppData()
+  if (!user || !signOut) return null
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-line px-2.5 py-2 text-xs">
+      <UserRound size={14} className="shrink-0 text-faint" />
+      <div className="min-w-0 flex-1"><div className="truncate font-medium">{user.display_name}</div><div className="truncate text-2xs text-faint">signed in</div></div>
+      <button onClick={signOut} className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-2xs font-medium text-muted hover:bg-subtle hover:text-fg"><LogOut size={12} />Sign out</button>
+    </div>
   )
 }
 

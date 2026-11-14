@@ -296,6 +296,7 @@ export async function mockApi(path: string, body?: any): Promise<unknown> {
   await sleep(200 + Math.random() * 250)
   const vid = path.split('/')[2]
   switch (true) {
+    case path === '/auth/me': return { auth_enabled: false, user: null }
     case path === '/health':
       return { hindsight: true, llm: 'gpt-4.1 (mock)', llm_calls: 0, agent_spend_usd: 0, agent_budget_usd: 3, bank_id: 'precedent-procurement', ledger_counts: counts(),
         bank_stats: { documents: 61 + counts().retain, memories: 344, observations: 157, reflect: 45 + counts().reflect } }
