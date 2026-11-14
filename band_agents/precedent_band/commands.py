@@ -16,7 +16,24 @@ DEFAULT_BENCH = Path(__file__).resolve().parents[2] / "data" / "market_benchmark
 
 # ---------------- incoming message handling ----------------
 def split_sender(raw: str) -> tuple[str, str]:
-    """Band delivers '[Sender]: text'. Return (sender, text)."""
+    """Return (sender, text) for the newest message in a Band turn.
+
+    band-sdk 8.x delivers a heading plus one JSON record per message
+    ({"message_id", "sender_id", "sender_name", "content", ...}); we answer the newest record and mention its
+    sender by participant id, which the SDK always resolves. Older SDKs delivered '[Sender]: text'."""
+    records = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if line.startswith("{") and '"content"' in line:
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(rec, dict) and isinstance(rec.get("content"), str):
+                records.append(rec)
+    if records:
+        last = records[-1]
+        return str(last.get("sender_id") or last.get("sender_name") or ""), last["content"]
     m = re.match(r"^\[([^\]]+)\]:\s*(.*)$", raw, re.S)
     return (m.group(1), m.group(2)) if m else ("", raw)
 

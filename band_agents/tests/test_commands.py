@@ -76,3 +76,17 @@ async def test_ledger():
     assert "x3" in await ledger_reply("memory v01", f)
     assert "Usage" in await ledger_reply("log v03", f)
     assert "Ledger:" in await ledger_reply("hi", f)
+
+
+def test_split_sender_band_sdk_8_records():
+    import json
+    rec = lambda mid, sid, name, text: json.dumps({"message_id": mid, "sender_id": sid, "sender_name": name,
+                                                   "sender_type": "User", "timestamp": "2026-11-14T08:03:44+00:00",
+                                                   "content": text})
+    raw = ("## Current input messages (2)\nThese are the messages delivered to you for this turn, oldest first.\n"
+           + rec("m1", "u-1", "Ann", "@Scout older") + "\n" + rec("m2", "u-2", "Ranjith Kumar G", "@Ledger memory kestrel"))
+    assert split_sender(raw) == ("u-2", "@Ledger memory kestrel")
+
+
+def test_split_sender_ignores_text_that_looks_like_json():
+    assert split_sender('hello {"content": broken') == ("", 'hello {"content": broken')
