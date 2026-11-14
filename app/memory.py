@@ -73,7 +73,7 @@ def bank_stats(bank_id: str) -> dict | None:
         return _STATS["data"]
     base = f"{config.HINDSIGHT_URL}/v1/default/banks/{bank_id}"
     try:
-        st = httpx.get(f"{base}/stats", timeout=2).json()
+        st = httpx.get(f"{base}/stats", params={"refresh": "true"}, timeout=2).json()  # unrefreshed stats lag behind
         ops: list = []
         while len(ops) < 2000:  # the server caps a page at 100
             page = httpx.get(f"{base}/operations", params={"limit": 100, "offset": len(ops)}, timeout=2).json()

@@ -13,7 +13,7 @@ NEW = {"name": "Acme Analytics", "category": "BI software", "contact": "Dana (AE
 @pytest.fixture
 def store(monkeypatch, tmp_path, offline):
     """Isolate VENDORS and the custom-vendor file; record retain calls instead of raising."""
-    monkeypatch.setattr(main, "VENDORS", dict(main.VENDORS))
+    monkeypatch.setattr(main, "VENDORS", {k: v for k, v in main.VENDORS.items() if "hidden" in v})  # ignore real UI-added vendors
     monkeypatch.setattr(main, "CUSTOM_VENDORS", tmp_path / "custom_vendors.json")
     calls = []
     monkeypatch.setattr(offline, "retain", lambda **kw: calls.append(kw), raising=False)
@@ -126,3 +126,14 @@ def test_new_vendor_gets_a_first_deal_on_the_calendar(api, store):
     assert len(after) == len(before) + 1
     deal = after[-1]
     assert deal["vendor_id"] == "v13" and "Acme Analytics" in deal["objective"] and deal["deadline"]
+
+
+def test_logged_outcome_survives_restart(api, store, monkeypatch):
+    monkeypatch.setattr(memory, "retain_episode", lambda *a, **k: None)
+    vid = api.post("/api/vendors", json=NEW).json()["id"]
+    api.post("/api/outcome", json={"vendor_id": vid, "tactic_used": "multi_year", "ask_discount": 0.15,
+                                   "final_discount": 0.11, "outcome": "partial", "notes": "two-year term"})
+    saved = main._load_list(main.LOGGED_OUTCOMES, "vendor_id")
+    assert [(e["vendor_id"], e["tactic_used"]) for e in saved] == [(vid, "multi_year")]
+    listed = {v["id"]: v for v in api.get("/api/vendors").json()}
+    assert listed[vid]["episodes"] == 1

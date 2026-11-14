@@ -73,7 +73,11 @@ def offline(monkeypatch):
 
 
 @pytest.fixture
-def api():
+def api(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
     from app import main
+    # never write to the real data files from a test
+    monkeypatch.setattr(main, "CUSTOM_VENDORS", tmp_path / "custom_vendors.json")
+    monkeypatch.setattr(main, "LOGGED_OUTCOMES", tmp_path / "logged_outcomes.json")
+    monkeypatch.setattr(main, "HISTORY", list(main.HISTORY))
     return TestClient(main.app)
