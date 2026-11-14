@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from . import agent, chat as chat_mod, config, llm, memory, sim
+from . import agent, chat as chat_mod, config, llm, memory, sim, suggestions as sugg
 
 app = FastAPI(title="Precedent")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -22,6 +22,7 @@ def _load(name):
 
 CUSTOM_VENDORS = config.DATA_DIR / "custom_vendors.json"  # vendors added from the UI
 LOGGED_OUTCOMES = config.DATA_DIR / "logged_outcomes.json"  # outcomes logged from the UI / Band
+SUGGESTIONS_CACHE = config.DATA_DIR / "suggestions_cache.json"  # LLM-written chat suggestions, one call per vendor ever
 
 
 def _load_list(path, key: str) -> list[dict]:
@@ -178,6 +179,7 @@ def outcome(req: OutcomeReq):
     memory.retain_episode(config.BANK_ID, ep, v)
     HISTORY.append(ep | {"vendor_id": v["id"]})
     _save_list(LOGGED_OUTCOMES, _load_list(LOGGED_OUTCOMES, "vendor_id") + [ep | {"vendor_id": v["id"]}])
+    _forget_suggestions(v["id"])  # new history -> new questions
     return {"retained": True}
 
 
@@ -211,6 +213,66 @@ def chat_endpoint(req: ChatReq):
         raise HTTPException(402, str(e))
     except Exception as e:
         raise HTTPException(502, f"chat failed: {type(e).__name__}: {e}")
+
+
+# ---- chat suggestions ------------------------------------------------------------------------
+SUGGESTIONS: dict[str, dict] = {}  # vendor_id ("" = all vendors) -> response
+_SUGG_LOCK = threading.Lock()  # one LLM call per new vendor, even with concurrent requests
+
+
+def _load_sugg_file() -> dict:
+    try:
+        data = json.loads(SUGGESTIONS_CACHE.read_text())
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_sugg_file(data: dict) -> None:
+    tmp = SUGGESTIONS_CACHE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, indent=2))
+    tmp.replace(SUGGESTIONS_CACHE)
+
+
+def _forget_suggestions(vid: str) -> None:
+    SUGGESTIONS.pop(vid, None)
+    with _SUGG_LOCK:
+        data = _load_sugg_file()
+        if data.pop(vid, None) is not None:
+            _save_sugg_file(data)
+
+
+def _suggest(v: dict) -> dict:
+    vid = v["id"]
+    eps = [e for e in HISTORY if e["vendor_id"] == vid]
+    if eps:
+        objective = next((u["objective"] for u in UPCOMING if u["vendor_id"] == vid), None)
+        return {"vendor_id": vid, "questions": sugg.from_history(v, eps, objective), "source": "history"}
+    with _SUGG_LOCK:
+        if vid in SUGGESTIONS:  # another request generated it while we waited
+            return SUGGESTIONS[vid]
+        saved = _load_sugg_file().get(vid)
+        if isinstance(saved, list) and len(saved) == 4 and all(isinstance(q, str) for q in saved):
+            return {"vendor_id": vid, "questions": saved, "source": "llm"}
+        try:
+            qs = sugg.from_llm(v)
+        except Exception:  # budget spent, network, bad output: generic questions, never an error
+            return {"vendor_id": vid, "questions": sugg.generic(v), "source": "default"}
+        data = _load_sugg_file()
+        data[vid] = qs
+        _save_sugg_file(data)
+        return {"vendor_id": vid, "questions": qs, "source": "llm"}
+
+
+@app.get("/api/chat/suggestions")
+def chat_suggestions(vendor_id: str | None = None):
+    """Four suggested questions for the Chat page: cross-vendor, or about one vendor."""
+    if not vendor_id:
+        return {"vendor_id": None, "questions": sugg.CROSS_VENDOR, "source": "default"}
+    v = vendor_or_404(vendor_id)
+    if vendor_id not in SUGGESTIONS:
+        SUGGESTIONS[vendor_id] = _suggest(v)
+    return SUGGESTIONS[vendor_id]
 
 
 # ---- learning-curve evaluation -------------------------------------------------------------

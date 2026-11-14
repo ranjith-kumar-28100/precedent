@@ -4,7 +4,7 @@ import { EVAL, HISTORY, UPCOMING, VENDORS } from './data'
 import { MEMORY } from './memory'
 import { ApiError } from '../lib/api'
 import { tacticLabel } from '../lib/format'
-import type { BriefResp, Citation, Episode, Ledger, LedgerOp, NewVendor, RecallHit, RecallResp, Vendor } from '../lib/types'
+import type { BriefResp, Citation, Episode, Ledger, LedgerOp, NewVendor, RecallHit, RecallResp, Suggestions, Upcoming, Vendor } from '../lib/types'
 
 const sleep = (t: number) => new Promise((r) => setTimeout(r, t))
 const H = HISTORY as Episode[]
@@ -234,6 +234,48 @@ function chat(body: { messages: { role: string; content: string }[]; vendor_id: 
   }
 }
 
+// Mirrors app/suggestions.py: questions built from the vendor's history; vendors added this session get
+// "mini model" questions from their profile (no real call in mock mode).
+const CROSS_VENDOR = [
+  'Which tactic has backfired most often, and with whom?',
+  'Which vendors changed owner or contact recently?',
+  'What works best with Kestrel Alloys?',
+  'Summarise every vendor where a competing quote beat 15%',
+]
+const TACTIC_WORDS: Record<string, string> = {
+  competing_quote: 'a competing quote', escalate_to_exec: 'escalating to their execs', quarter_end_timing: 'quarter-end timing',
+  multi_year: 'a multi-year commit', volume_commit: 'a volume commit', payment_terms: 'payment terms', bundle: 'bundling',
+}
+const genericQs = (v: Vendor) => [
+  `What do we know about ${v.name} so far?`, `Who should we expect to negotiate with at ${v.name}?`,
+  `Which tactics work best with other ${v.category} vendors?`, `What opening ask makes sense for ${v.name}?`,
+]
+
+function suggestions(vid: string | null): Suggestions {
+  if (!vid) return { vendor_id: null, questions: CROSS_VENDOR, source: 'default' }
+  const v = VENDORS.find((x) => x.id === vid)
+  if (!v) throw new ApiError('404 on /chat/suggestions: unknown vendor', 404, 'unknown vendor')
+  const eps = episodesOf(vid), name = v.name
+  if (!eps.length) return { vendor_id: vid, source: 'llm', questions: [
+    `What discount does ${name} typically give on a first ${v.category} deal?`,
+    `Who at ${name} can approve a discount beyond the list price?`,
+    `How do other ${v.category} vendors respond to a competing quote, and would ${name}?`,
+    `What should we find out from ${v.contact !== 'unknown' ? v.contact.split(',')[0] : name} before opening?`,
+  ] }
+  const qs: string[] = []
+  if (eps.some((e) => (e.outcome === 'won' || e.outcome === 'partial') && e.final_discount > 0)) qs.push(`Which tactic has worked best with ${name}, and at what discount?`)
+  const losses: Record<string, [number, number]> = {}
+  eps.forEach((e, i) => { if (e.outcome === 'lost') losses[e.tactic_used] = [(losses[e.tactic_used]?.[0] ?? 0) + 1, i] })
+  const worst = Object.keys(losses).sort((a, b) => losses[b][0] - losses[a][0] || losses[b][1] - losses[a][1])[0]
+  if (worst) qs.push(`Why did ${TACTIC_WORDS[worst] ?? worst.replace(/_/g, ' ')} backfire with ${name}?`)
+  if (eps.some((e) => e.decision_maker_seen || /sign-?off|signs|approv|director|decision/i.test(e.notes))) qs.push(`Who actually approves discounts at ${name} today?`)
+  const up = (UPCOMING as Upcoming[]).find((u) => u.vendor_id === vid)
+  if (up) qs.push(`How should we approach '${up.objective.replace(/\.$/, '')}' with ${name}?`)
+  if (eps.length >= 2) qs.push(`What has changed at ${name} since ${eps[0].date.slice(0, 4)}?`)
+  for (const q of genericQs(v)) if (qs.length < 4 && !qs.includes(q)) qs.push(q)
+  return { vendor_id: vid, questions: qs.slice(0, 4), source: 'history' }
+}
+
 export async function mockApi(path: string, body?: any): Promise<unknown> {
   await sleep(200 + Math.random() * 250)
   const vid = path.split('/')[2]
@@ -250,6 +292,8 @@ export async function mockApi(path: string, body?: any): Promise<unknown> {
       log('recall', body.vendor_id, 1840, `tactic scoreboard · tags=vendor:${body.vendor_id}`, true)
       if (!body.use_memory) return briefOff(body.vendor_id)
       return MEMORY[body.vendor_id] || episodesOf(body.vendor_id).length ? briefOn(body.vendor_id) : briefColdStart(body.vendor_id)
+    case path.startsWith('/chat/suggestions'):
+      return suggestions(new URLSearchParams(path.split('?')[1] ?? '').get('vendor_id'))
     case path === '/chat':
       await sleep(1200)
       if (body.use_memory) log('recall', body.vendor_id, 401, 'bank-wide chat search', true)

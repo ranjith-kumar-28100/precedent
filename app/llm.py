@@ -8,10 +8,11 @@ import httpx
 from . import config
 
 
-CALLS = {"agent": 0}
+CALLS = {"agent": 0, "mini": 0}
 SPEND = {"usd": 0.0, "prompt": 0, "completion": 0}
 # list prices per million tokens for the agent model (override in .env if your region differs)
 _PRICE_IN, _PRICE_OUT = float(config.env("AGENT_PRICE_IN_PER_M", "2.0")), float(config.env("AGENT_PRICE_OUT_PER_M", "8.0"))
+_MINI_IN, _MINI_OUT = float(config.env("MINI_PRICE_IN_PER_M", "0.4")), float(config.env("MINI_PRICE_OUT_PER_M", "1.6"))
 BUDGET_USD = float(config.env("AGENT_BUDGET_USD", "3.0"))
 
 
@@ -19,10 +20,12 @@ class BudgetExceeded(RuntimeError):
     pass
 
 
-def _meter(usage: dict) -> None:
-    SPEND["prompt"] += usage.get("prompt_tokens", 0)
-    SPEND["completion"] += usage.get("completion_tokens", 0)
-    SPEND["usd"] = (SPEND["prompt"] * _PRICE_IN + SPEND["completion"] * _PRICE_OUT) / 1e6
+def _meter(usage: dict, price_in: float = _PRICE_IN, price_out: float = _PRICE_OUT) -> None:
+    """Add one call's cost to the shared spend; each model is priced at its own rate."""
+    p, c = usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0)
+    SPEND["prompt"] += p
+    SPEND["completion"] += c
+    SPEND["usd"] += (p * price_in + c * price_out) / 1e6
 
 
 def _endpoint() -> tuple[str, dict]:
@@ -88,3 +91,18 @@ def chat_message(messages: list[dict], tools: list[dict] | None = None, *, tempe
         _meter(data.get("usage") or {})
         return data["choices"][0]["message"]
     raise RuntimeError("LLM unavailable after retries")
+
+
+def mini_chat(messages: list[dict], *, temperature: float = 0.4, max_tokens: int = 300, timeout: float = 30) -> str:
+    """One short completion on the mini model, under the same budget guard and meter. No retry loop: callers
+    have a cheap fallback, so a failure should be fast."""
+    if SPEND["usd"] >= BUDGET_USD:
+        raise BudgetExceeded(f"agent LLM budget of ${BUDGET_USD:.2f} reached; raise AGENT_BUDGET_USD to continue")
+    url, headers = _endpoint()
+    body = {"model": config.LLM_MINI_MODEL, "messages": messages, "temperature": temperature, "max_tokens": max_tokens}
+    CALLS["mini"] += 1
+    r = httpx.post(url, headers=headers, json=body, timeout=timeout)
+    r.raise_for_status()
+    data = r.json()
+    _meter(data.get("usage") or {}, _MINI_IN, _MINI_OUT)
+    return data["choices"][0]["message"]["content"] or ""
